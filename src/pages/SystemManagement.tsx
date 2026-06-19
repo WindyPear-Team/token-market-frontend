@@ -167,11 +167,18 @@ interface SystemSettings extends PublicSettings {
   checkin_streak_enabled: boolean
   checkin_streak_cycle_days: string
   checkin_streak_rewards: string
+  payment_gateway_provider: string
   payment_yipay_gateway_url: string
   payment_yipay_pid: string
   payment_yipay_key: string
   payment_yipay_notify_url: string
   payment_yipay_return_url: string
+  payment_openpayment_base_url: string
+  payment_openpayment_config_url: string
+  payment_openpayment_merchant_id: string
+  payment_openpayment_key: string
+  payment_openpayment_notify_url: string
+  payment_openpayment_return_url: string
 }
 
 type SystemTab =
@@ -233,11 +240,18 @@ const defaultSystemSettings: SystemSettings = {
   checkin_streak_enabled: false,
   checkin_streak_cycle_days: "7",
   checkin_streak_rewards: "{}",
+  payment_gateway_provider: "yipay",
   payment_yipay_gateway_url: "",
   payment_yipay_pid: "",
   payment_yipay_key: "",
   payment_yipay_notify_url: "",
   payment_yipay_return_url: "",
+  payment_openpayment_base_url: "",
+  payment_openpayment_config_url: "",
+  payment_openpayment_merchant_id: "",
+  payment_openpayment_key: "",
+  payment_openpayment_notify_url: "",
+  payment_openpayment_return_url: "",
 }
 
 const defaultRedeemDraft: RedeemCodeDraft = {
@@ -671,13 +685,33 @@ export default function SystemManagement({ section = "general" }: { section?: Sy
                 <TextField label={copy.minRechargeAmount} value={form.payment_min_recharge_amount} placeholder="1" type="number" onChange={(value) => updateField("payment_min_recharge_amount", value)} />
                 <TextField label={copy.rechargePresets} value={jsonListToCSV(form.payment_recharge_presets)} placeholder="5,10,20,50,100" onChange={(value) => updateField("payment_recharge_presets", csvToJSONString(value))} />
                 <TextField label={copy.paymentMethods} value={jsonListToCSV(form.payment_methods)} placeholder="alipay,wxpay" onChange={(value) => updateField("payment_methods", csvToJSONString(value))} />
-                <TextField label={copy.yipayGatewayURL} value={form.payment_yipay_gateway_url} placeholder="https://pay.example.com/submit.php" onChange={(value) => updateField("payment_yipay_gateway_url", value)} />
-                <TextField label={copy.yipayPID} value={form.payment_yipay_pid} placeholder="1000" onChange={(value) => updateField("payment_yipay_pid", value)} />
-                <TextField label={copy.yipayKey} value={form.payment_yipay_key} placeholder={copy.yipayKeyPlaceholder} type="password" onChange={(value) => updateField("payment_yipay_key", value)} />
-                <TextField label={copy.yipayNotifyURL} value={form.payment_yipay_notify_url} placeholder="https://api.example.com/api/payment/yipay/notify" onChange={(value) => updateField("payment_yipay_notify_url", value)} />
-                <TextField label={copy.yipayReturnURL} value={form.payment_yipay_return_url} placeholder="https://api.example.com/api/payment/yipay/return" onChange={(value) => updateField("payment_yipay_return_url", value)} />
+                <label className="grid gap-2 text-sm">
+                  <span className="font-medium">{copy.paymentGatewayProvider}</span>
+                  <select className="h-10 rounded-md border bg-background px-3 text-sm" value={form.payment_gateway_provider || "yipay"} onChange={(event) => updateField("payment_gateway_provider", event.target.value)}>
+                    <option value="yipay">{copy.paymentProviderYipay}</option>
+                    <option value="openpayment">{copy.paymentProviderOpenPayment}</option>
+                  </select>
+                </label>
+                {(form.payment_gateway_provider || "yipay") === "openpayment" ? (
+                  <>
+                    <TextField label={copy.openPaymentBaseURL} value={form.payment_openpayment_base_url} placeholder="https://pay.example.com" onChange={(value) => updateField("payment_openpayment_base_url", value)} />
+                    <TextField label={copy.openPaymentConfigURL} value={form.payment_openpayment_config_url} placeholder="https://pay.example.com/.well-known/openpayment-configuation" onChange={(value) => updateField("payment_openpayment_config_url", value)} />
+                    <TextField label={copy.openPaymentMerchantID} value={form.payment_openpayment_merchant_id} placeholder="1000" onChange={(value) => updateField("payment_openpayment_merchant_id", value)} />
+                    <TextField label={copy.openPaymentKey} value={form.payment_openpayment_key} placeholder={copy.openPaymentKeyPlaceholder} type="password" onChange={(value) => updateField("payment_openpayment_key", value)} />
+                    <TextField label={copy.openPaymentNotifyURL} value={form.payment_openpayment_notify_url} placeholder="https://api.example.com/api/payment/openpayment/notify" onChange={(value) => updateField("payment_openpayment_notify_url", value)} />
+                    <TextField label={copy.openPaymentReturnURL} value={form.payment_openpayment_return_url} placeholder="https://api.example.com/api/payment/openpayment/return" onChange={(value) => updateField("payment_openpayment_return_url", value)} />
+                  </>
+                ) : (
+                  <>
+                    <TextField label={copy.yipayGatewayURL} value={form.payment_yipay_gateway_url} placeholder="https://pay.example.com/submit.php" onChange={(value) => updateField("payment_yipay_gateway_url", value)} />
+                    <TextField label={copy.yipayPID} value={form.payment_yipay_pid} placeholder="1000" onChange={(value) => updateField("payment_yipay_pid", value)} />
+                    <TextField label={copy.yipayKey} value={form.payment_yipay_key} placeholder={copy.yipayKeyPlaceholder} type="password" onChange={(value) => updateField("payment_yipay_key", value)} />
+                    <TextField label={copy.yipayNotifyURL} value={form.payment_yipay_notify_url} placeholder="https://api.example.com/api/payment/yipay/notify" onChange={(value) => updateField("payment_yipay_notify_url", value)} />
+                    <TextField label={copy.yipayReturnURL} value={form.payment_yipay_return_url} placeholder="https://api.example.com/api/payment/yipay/return" onChange={(value) => updateField("payment_yipay_return_url", value)} />
+                  </>
+                )}
               </div>
-              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">{copy.yipayGatewayHint}</div>
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">{(form.payment_gateway_provider || "yipay") === "openpayment" ? copy.openPaymentGatewayHint : copy.yipayGatewayHint}</div>
             </div>
           </div>
         </SettingsPanel>
@@ -1919,14 +1953,17 @@ const zhCopy = {
   checkInRandomEnabled: "启用随机奖励",
   checkInRandomMin: "随机奖励最小值",
   checkInRandomMax: "随机奖励最大值",
-  paymentSettings: "易支付充值",
-  paymentSettingsDescription: "配置用户余额充值、人民币结算汇率和易支付网关。",
+  paymentSettings: "支付充值",
+  paymentSettingsDescription: "配置用户余额充值、人民币结算汇率、易支付或 OPS 网关。",
   paymentEnabled: "启用支付充值",
   currencyDisplayName: "余额显示符号/名称",
   usdToRMBRate: "USD 到 RMB 汇率",
   minRechargeAmount: "最低充值金额",
   rechargePresets: "预设充值金额",
   paymentMethods: "启用支付方式",
+  paymentGatewayProvider: "支付网关",
+  paymentProviderYipay: "易支付 / EPay",
+  paymentProviderOpenPayment: "Open Payment Specification",
   yipayGatewayURL: "易支付提交地址",
   yipayPID: "易支付商户 PID",
   yipayKey: "易支付商户密钥",
@@ -1934,6 +1971,14 @@ const zhCopy = {
   yipayNotifyURL: "异步通知地址（可选）",
   yipayReturnURL: "同步跳转地址（可选）",
   yipayGatewayHint: "易支付不同部署的提交路径可能不同，请填写实际提交端点，例如 https://pay.example.com/submit.php。通知和跳转地址留空时会根据 Base URL 自动生成。",
+  openPaymentBaseURL: "OPS 平台 Base URL",
+  openPaymentConfigURL: "OPS 发现配置地址",
+  openPaymentMerchantID: "OPS 商户号",
+  openPaymentKey: "OPS 商户密钥",
+  openPaymentKeyPlaceholder: "用于 OPS MD5 或 HMAC-SHA256 签名的商户密钥",
+  openPaymentNotifyURL: "OPS 异步通知地址（可选）",
+  openPaymentReturnURL: "OPS 同步跳转地址（可选）",
+  openPaymentGatewayHint: "OPS 模式会读取 /.well-known/openpayment-configuation（规范中的 configuation 拼写是固定路径），并按发现配置中的端点、字段别名、支付方式和签名规则发起支付。发现配置地址留空时会根据 Base URL 自动生成。",
   security: "安全策略",
   rateLimitEnabled: "启用网关速率限制",
   rateLimitRPM: "每分钟请求数",
@@ -2157,14 +2202,17 @@ const enCopy: SystemCopy = {
   checkInRandomEnabled: "Enable random reward",
   checkInRandomMin: "Random reward minimum",
   checkInRandomMax: "Random reward maximum",
-  paymentSettings: "Yipay Recharge",
-  paymentSettingsDescription: "Configure user balance recharge, RMB settlement rate, and the Yipay gateway.",
+  paymentSettings: "Payment Recharge",
+  paymentSettingsDescription: "Configure user balance recharge, RMB settlement rate, and the Yipay or OPS gateway.",
   paymentEnabled: "Enable payment recharge",
   currencyDisplayName: "Balance display symbol/name",
   usdToRMBRate: "USD to RMB rate",
   minRechargeAmount: "Minimum recharge amount",
   rechargePresets: "Preset recharge amounts",
   paymentMethods: "Enabled payment methods",
+  paymentGatewayProvider: "Payment gateway",
+  paymentProviderYipay: "Yipay / EPay",
+  paymentProviderOpenPayment: "Open Payment Specification",
   yipayGatewayURL: "Yipay submit URL",
   yipayPID: "Yipay merchant PID",
   yipayKey: "Yipay merchant key",
@@ -2172,6 +2220,14 @@ const enCopy: SystemCopy = {
   yipayNotifyURL: "Notify URL override (optional)",
   yipayReturnURL: "Return URL override (optional)",
   yipayGatewayHint: "Yipay deployments may use different submit paths. Enter the actual submit endpoint, such as https://pay.example.com/submit.php. Notify and return URLs are generated from Base URL when left empty.",
+  openPaymentBaseURL: "OPS platform base URL",
+  openPaymentConfigURL: "OPS discovery URL",
+  openPaymentMerchantID: "OPS merchant ID",
+  openPaymentKey: "OPS merchant key",
+  openPaymentKeyPlaceholder: "Merchant key used for OPS MD5 or HMAC-SHA256 signing",
+  openPaymentNotifyURL: "OPS notify URL override (optional)",
+  openPaymentReturnURL: "OPS return URL override (optional)",
+  openPaymentGatewayHint: "OPS mode reads /.well-known/openpayment-configuation. The configuation spelling is part of the spec. Leave discovery URL empty to generate it from the platform base URL.",
   security: "Security Policy",
   rateLimitEnabled: "Enable gateway rate limiting",
   rateLimitRPM: "Requests per minute",
