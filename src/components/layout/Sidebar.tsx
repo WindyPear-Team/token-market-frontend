@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, Settings, Shield, Users } from "lucide-react"
+import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, Settings, Shield, Users, WalletCards } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -14,7 +14,7 @@ interface CurrentUser {
 
 interface MenuItem {
   icon: LucideIcon
-  labelKey: "nav.dashboard" | "nav.usage" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
+  labelKey: "nav.dashboard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
   path: string
   settingKey: keyof PublicSettings
   children?: SystemSubItem[]
@@ -35,7 +35,8 @@ const systemSubItems: SystemSubItem[] = [
 
 const userMenuItems: MenuItem[] = [
   { icon: LayoutDashboard, labelKey: "nav.dashboard", path: "/dashboard", settingKey: "sidebar_dashboard_enabled" },
-  { icon: History, labelKey: "nav.usage", path: "/dashboard/logs", settingKey: "sidebar_usage_enabled" },
+  { icon: History, labelKey: "nav.details", path: "/dashboard/logs", settingKey: "sidebar_usage_enabled" },
+  { icon: WalletCards, labelKey: "nav.wallet", path: "/dashboard/wallet", settingKey: "sidebar_wallet_enabled" },
   { icon: KeyRound, labelKey: "nav.apiKeys", path: "/dashboard/api-keys", settingKey: "sidebar_api_keys_enabled" },
   { icon: MessageSquare, labelKey: "nav.chat", path: "/dashboard/chat", settingKey: "sidebar_chat_enabled" },
   { icon: Palette, labelKey: "nav.images", path: "/dashboard/images", settingKey: "sidebar_images_enabled" },

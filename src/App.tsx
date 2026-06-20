@@ -12,6 +12,7 @@ import Setup from "./pages/Setup"
 import Home from "./pages/Home"
 import ModelCatalog from "./pages/ModelCatalog"
 import Settings from "./pages/Settings"
+import Wallet from "./pages/Wallet"
 import APIKeys from "./pages/APIKeys"
 import Chat from "./pages/Chat"
 import Images from "./pages/Images"
@@ -189,7 +190,10 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
     return t("models.title")
   }
   if (normalizedPathname === "/dashboard/logs") {
-    return t("usage.title")
+    return language === "zh" ? "明细" : "Details"
+  }
+  if (normalizedPathname === "/dashboard/wallet") {
+    return language === "zh" ? "钱包" : "Wallet"
   }
   if (normalizedPathname === "/dashboard/api-keys") {
     return t("settings.apiKeys")
@@ -333,6 +337,7 @@ function App() {
                   }
                 />
                 <Route path="logs" element={<Logs />} />
+                <Route path="wallet" element={<Wallet />} />
                 <Route path="api-keys" element={<APIKeys />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="images" element={<Images />} />

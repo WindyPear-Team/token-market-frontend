@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { CalendarCheck, Copy, CreditCard, KeyRound, LogOut } from "lucide-react"
+import { KeyRound, LogOut } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
 import api from "@/lib/api"
@@ -29,63 +29,10 @@ interface CurrentUser {
   is_admin: boolean
 }
 
-interface ReferralInfo {
-  enabled: boolean
-  code: string
-  link: string
-  commission_rate: string
-  invite_count: number
-  total_commission: string | number
-}
-
 interface PasswordMethod {
   method: "email_code" | "current_password"
   email: string
   password_set: boolean
-}
-
-interface CheckInStatus {
-  enabled: boolean
-  checked_in_today: boolean
-  current_streak: number
-  today_reward_preview: string
-  random_enabled: boolean
-  random_min: string
-  random_max: string
-  next_streak_reward?: { day: number; amount: string }
-  currency_display_name: string
-  recent_records: Array<{
-    check_in_date: string
-    reward_amount: string
-    streak_days: number
-    reward_kind: string
-  }>
-}
-
-interface CheckInClaimResult {
-  reward_amount: string
-  reward_kind: string
-  streak_days: number
-  balance: string
-  currency_display_name: string
-}
-
-interface PaymentConfig {
-  enabled: boolean
-  currency_display_name: string
-  usd_to_rmb_rate: string
-  min_recharge_amount: string
-  recharge_presets: string[]
-  methods: string[]
-}
-
-interface PaymentOrderResult {
-  order_no: string
-  amount: string
-  rmb_amount: string
-  method: string
-  status: string
-  payment_url?: string
 }
 
 interface PasskeyCredential {
@@ -101,19 +48,12 @@ export default function Settings() {
   const { language, setLanguage, t } = useI18n()
   const copy = language === "zh" ? zhSettingsCopy : enSettingsCopy
   const queryClient = useQueryClient()
-  const [redeemCode, setRedeemCode] = useState("")
-  const [redeemStatus, setRedeemStatus] = useState("")
-  const [copyStatus, setCopyStatus] = useState("")
   const [bindStatus, setBindStatus] = useState("")
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [passwordEmailCode, setPasswordEmailCode] = useState("")
   const [passwordStatus, setPasswordStatus] = useState("")
-  const [checkInStatusText, setCheckInStatusText] = useState("")
-  const [rechargeAmount, setRechargeAmount] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState("alipay")
-  const [paymentStatus, setPaymentStatus] = useState("")
   const [passkeyName, setPasskeyName] = useState("")
   const [passkeyStatus, setPasskeyStatus] = useState("")
 
@@ -125,13 +65,6 @@ export default function Settings() {
     },
   })
 
-  const { data: referralInfo } = useQuery<ReferralInfo>({
-    queryKey: ["user-referral"],
-    queryFn: async () => {
-      const res = await api.get("/user/referral")
-      return res.data
-    },
-  })
   const { data: settings } = useQuery<PublicSettings>({
     queryKey: ["public-settings"],
     queryFn: async () => {
@@ -147,22 +80,6 @@ export default function Settings() {
       return res.data
     },
   })
-  const { data: checkInStatus } = useQuery<CheckInStatus>({
-    queryKey: ["check-in-status"],
-    queryFn: async () => {
-      const res = await api.get("/user/check-in/status")
-      return res.data
-    },
-    enabled: publicSettings.checkin_enabled,
-  })
-  const { data: paymentConfig } = useQuery<PaymentConfig>({
-    queryKey: ["payment-config"],
-    queryFn: async () => {
-      const res = await api.get("/user/payment/config")
-      return res.data
-    },
-    enabled: publicSettings.payment_enabled,
-  })
   const { data: passkeys = [] } = useQuery<PasskeyCredential[]>({
     queryKey: ["passkeys"],
     queryFn: async () => {
@@ -176,22 +93,6 @@ export default function Settings() {
     localStorage.removeItem("token")
     navigate("/login", { replace: true })
   }
-
-  const redeemBalance = useMutation({
-    mutationFn: async () => {
-      const res = await api.post("/user/redeem-code", { code: redeemCode })
-      return res.data as { amount: string | number; balance: string | number }
-    },
-    onSuccess: (result) => {
-      setRedeemStatus(t("settings.redeemSuccess", { amount: result.amount }))
-      setRedeemCode("")
-      queryClient.invalidateQueries({ queryKey: ["me"] })
-      queryClient.invalidateQueries({ queryKey: ["stats", "user"] })
-    },
-    onError: (error) => {
-      setRedeemStatus(error instanceof Error ? `${t("settings.redeemFailed")}: ${error.message}` : t("settings.redeemFailed"))
-    },
-  })
 
   const bindOIDC = useMutation({
     mutationFn: async () => {
@@ -236,35 +137,6 @@ export default function Settings() {
     onError: (error) => setPasswordStatus(apiErrorMessage(error, copy.passwordUpdateFailed)),
   })
 
-  const claimCheckIn = useMutation({
-    mutationFn: async () => {
-      const res = await api.post("/user/check-in")
-      return res.data as CheckInClaimResult
-    },
-    onSuccess: (result) => {
-      setCheckInStatusText(copy.checkInSuccess.replace("{amount}", `${result.currency_display_name}${result.reward_amount}`).replace("{streak}", String(result.streak_days)))
-      queryClient.invalidateQueries({ queryKey: ["check-in-status"] })
-      queryClient.invalidateQueries({ queryKey: ["me"] })
-      queryClient.invalidateQueries({ queryKey: ["stats", "user"] })
-    },
-    onError: (error) => setCheckInStatusText(apiErrorMessage(error, copy.checkInFailed)),
-  })
-
-  const createPaymentOrder = useMutation({
-    mutationFn: async () => {
-      const method = paymentMethod || paymentConfig?.methods?.[0] || "alipay"
-      const res = await api.post("/user/payment/orders", { amount: rechargeAmount, method })
-      return res.data as PaymentOrderResult
-    },
-    onSuccess: (result) => {
-      setPaymentStatus(copy.paymentOrderCreated.replace("{order}", result.order_no).replace("{amount}", `${paymentConfig?.currency_display_name || publicSettings.payment_currency_display_name}${result.amount}`))
-      if (result.payment_url) {
-        window.location.href = result.payment_url
-      }
-    },
-    onError: (error) => setPaymentStatus(apiErrorMessage(error, copy.paymentOrderFailed)),
-  })
-
   const createPasskey = useMutation({
     mutationFn: async () => {
       if (!passkeySupported()) {
@@ -300,11 +172,6 @@ export default function Settings() {
     },
     onError: (error) => setPasskeyStatus(apiErrorMessage(error, copy.passkeyDeleteFailed)),
   })
-
-  const copyText = async (value: string) => {
-    await navigator.clipboard.writeText(value)
-    setCopyStatus(t("settings.keyCopied"))
-  }
 
   return (
     <div className="space-y-6">
@@ -487,127 +354,6 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("settings.redeemCode")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                value={redeemCode}
-                onChange={(event) => setRedeemCode(event.target.value)}
-                placeholder={t("settings.redeemCodePlaceholder")}
-              />
-              <Button
-                className="shrink-0"
-                disabled={!redeemCode.trim() || redeemBalance.isPending}
-                onClick={() => redeemBalance.mutate()}
-              >
-                {t("settings.redeem")}
-              </Button>
-            </div>
-            {redeemStatus && <div className="text-sm text-muted-foreground">{redeemStatus}</div>}
-          </CardContent>
-        </Card>
-
-        {publicSettings.checkin_enabled && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarCheck size={18} />
-                {copy.dailyCheckIn}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 text-sm sm:grid-cols-2">
-                <Field label={copy.currentStreak} value={String(checkInStatus?.current_streak || 0)} />
-                <Field label={copy.todayReward} value={checkInRewardPreview(checkInStatus, publicSettings.payment_currency_display_name)} />
-                <Field label={copy.todayStatus} value={checkInStatus?.checked_in_today ? copy.checkedIn : copy.notCheckedIn} />
-                <Field label={copy.nextStreakReward} value={nextStreakRewardText(checkInStatus)} />
-              </div>
-              <Button className="w-full gap-2" disabled={!checkInStatus?.enabled || checkInStatus?.checked_in_today || claimCheckIn.isPending} onClick={() => claimCheckIn.mutate()}>
-                <CalendarCheck size={16} />
-                {checkInStatus?.checked_in_today ? copy.checkedIn : copy.checkInNow}
-              </Button>
-              {checkInStatusText && <div className="text-sm text-muted-foreground">{checkInStatusText}</div>}
-              {checkInStatus?.recent_records?.length ? (
-                <div className="space-y-2 border-t pt-3">
-                  <div className="text-sm font-medium">{copy.recentCheckIns}</div>
-                  {checkInStatus.recent_records.slice(0, 3).map((record) => (
-                    <div key={record.check_in_date} className="flex justify-between gap-3 text-xs text-muted-foreground">
-                      <span>{record.check_in_date} · {copy.streakDays.replace("{days}", String(record.streak_days))}</span>
-                      <span>{checkInStatus.currency_display_name}{record.reward_amount}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-        )}
-
-        {publicSettings.payment_enabled && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard size={18} />
-                {copy.rechargeBalance}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-sm text-muted-foreground">
-                {copy.rechargeDescription
-                  .replace("{min}", `${paymentConfig?.currency_display_name || publicSettings.payment_currency_display_name}${paymentConfig?.min_recharge_amount || publicSettings.payment_min_recharge_amount}`)
-                  .replace("{rate}", paymentConfig?.usd_to_rmb_rate || publicSettings.payment_usd_to_rmb_rate)}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(paymentConfig?.recharge_presets || parseJSONList(publicSettings.payment_recharge_presets)).map((amount) => (
-                  <Button key={amount} type="button" variant={rechargeAmount === amount ? "default" : "outline"} size="sm" onClick={() => setRechargeAmount(amount)}>
-                    {paymentConfig?.currency_display_name || publicSettings.payment_currency_display_name}{amount}
-                  </Button>
-                ))}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[1fr_160px]">
-                <Input value={rechargeAmount} type="number" min="0" placeholder={copy.rechargeAmountPlaceholder} onChange={(event) => setRechargeAmount(event.target.value)} />
-                <select className="h-10 rounded-md border bg-background px-3 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                  {(paymentConfig?.methods || parseJSONList(publicSettings.payment_methods)).map((method) => (
-                    <option key={method} value={method}>{paymentMethodLabel(method, copy)}</option>
-                  ))}
-                </select>
-              </div>
-              <Button className="w-full gap-2" disabled={!canCreatePaymentOrder(rechargeAmount, paymentConfig, publicSettings) || createPaymentOrder.isPending} onClick={() => createPaymentOrder.mutate()}>
-                <CreditCard size={16} />
-                {copy.createPaymentOrder}
-              </Button>
-              {paymentStatus && <div className="text-sm text-muted-foreground">{paymentStatus}</div>}
-            </CardContent>
-          </Card>
-        )}
-
-        {referralInfo?.enabled && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{copy.referral}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Field label={copy.referralCode} value={referralInfo.code || "-"} />
-              <Field label={copy.inviteCount} value={String(referralInfo.invite_count || 0)} />
-              <Field label={copy.totalCommission} value={`${publicSettings.payment_currency_display_name}${referralInfo.total_commission || 0}`} />
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input value={referralInfo.link || ""} readOnly />
-                <Button
-                  variant="outline"
-                  className="shrink-0 gap-2"
-                  disabled={!referralInfo.link}
-                  onClick={() => copyText(referralInfo.link)}
-                >
-                  <Copy size={16} />
-                  {t("common.copy")}
-                </Button>
-              </div>
-              {copyStatus && <div className="text-sm text-muted-foreground">{copyStatus}</div>}
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   )
@@ -657,50 +403,6 @@ function Field({ label, value }: { label: string; value: string }) {
       <div className="min-w-0 truncate text-sm font-medium">{value}</div>
     </div>
   )
-}
-
-function checkInRewardPreview(status: CheckInStatus | undefined, fallbackCurrency: string) {
-  if (!status) {
-    return "-"
-  }
-  const currency = status.currency_display_name || fallbackCurrency
-  if (status.random_enabled) {
-    return `${currency}${status.today_reward_preview}+ (${currency}${status.random_min}~${status.random_max})`
-  }
-  return `${currency}${status.today_reward_preview}`
-}
-
-function nextStreakRewardText(status: CheckInStatus | undefined) {
-  if (!status?.next_streak_reward) {
-    return "-"
-  }
-  return `${status.next_streak_reward.day}d +${status.currency_display_name}${status.next_streak_reward.amount}`
-}
-
-function parseJSONList(raw: string) {
-  try {
-    const parsed = JSON.parse(raw || "[]")
-    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : []
-  } catch {
-    return raw.split(",").map((item) => item.trim()).filter(Boolean)
-  }
-}
-
-function canCreatePaymentOrder(amount: string, config: PaymentConfig | undefined, publicSettings: PublicSettings) {
-  const value = Number(amount)
-  const min = Number(config?.min_recharge_amount || publicSettings.payment_min_recharge_amount || 0)
-  return Boolean((config?.enabled ?? publicSettings.payment_enabled) && Number.isFinite(value) && value > 0 && value >= min)
-}
-
-function paymentMethodLabel(method: string, copy: typeof zhSettingsCopy) {
-  switch (method.toLowerCase()) {
-    case "alipay":
-      return copy.alipay
-    case "wxpay":
-      return copy.wxpay
-    default:
-      return method
-  }
 }
 
 function formatDateTime(value: string) {
