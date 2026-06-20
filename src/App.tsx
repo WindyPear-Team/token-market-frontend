@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Layout } from "./components/layout/Layout"
 import Dashboard from "./pages/Dashboard"
+import DataBoard from "./pages/DataBoard"
 import Channels from "./pages/Channels"
 import Models from "./pages/Models"
 import Users from "./pages/Users"
@@ -177,6 +178,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   if (normalizedPathname === "/dashboard/admin-overview") {
     return t("nav.adminOverview")
   }
+  if (normalizedPathname === "/dashboard/data-board") {
+    return t("dataBoard.title")
+  }
   if (normalizedPathname.startsWith("/dashboard/admin/")) {
     return t("system.title")
   }
@@ -255,6 +259,7 @@ function App() {
                 }
               >
                 <Route index element={<Dashboard />} />
+                <Route path="data-board" element={<DataBoard />} />
                 <Route
                   path="admin-overview"
                   element={

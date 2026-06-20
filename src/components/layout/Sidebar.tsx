@@ -14,7 +14,7 @@ interface CurrentUser {
 
 interface MenuItem {
   icon: LucideIcon
-  labelKey: "nav.dashboard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
+  labelKey: "nav.dashboard" | "nav.dataBoard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
   path: string
   settingKey: keyof PublicSettings
   children?: SystemSubItem[]
@@ -35,6 +35,7 @@ const systemSubItems: SystemSubItem[] = [
 
 const userMenuItems: MenuItem[] = [
   { icon: LayoutDashboard, labelKey: "nav.dashboard", path: "/dashboard", settingKey: "sidebar_dashboard_enabled" },
+  { icon: BarChart3, labelKey: "nav.dataBoard", path: "/dashboard/data-board", settingKey: "sidebar_data_board_enabled" },
   { icon: History, labelKey: "nav.details", path: "/dashboard/logs", settingKey: "sidebar_usage_enabled" },
   { icon: WalletCards, labelKey: "nav.wallet", path: "/dashboard/wallet", settingKey: "sidebar_wallet_enabled" },
   { icon: KeyRound, labelKey: "nav.apiKeys", path: "/dashboard/api-keys", settingKey: "sidebar_api_keys_enabled" },

@@ -144,6 +144,23 @@ interface StatusMonitorDraft {
   enabled: boolean
 }
 
+interface Announcement {
+  id: number
+  title: string
+  content: string
+  enabled: boolean
+  sort_order: number
+  created_at: string
+}
+
+interface AnnouncementDraft {
+  id?: number
+  title: string
+  content: string
+  enabled: boolean
+  sort_order: string
+}
+
 interface SystemSettings extends PublicSettings {
   hcaptcha_secret: string
   smtp_host: string
@@ -291,6 +308,13 @@ const defaultStatusMonitorDraft: StatusMonitorDraft = {
   enabled: true,
 }
 
+const defaultAnnouncementDraft: AnnouncementDraft = {
+  title: "",
+  content: "",
+  enabled: true,
+  sort_order: "0",
+}
+
 export default function SystemManagement({ section = "general", initialTab }: { section?: SystemSection; initialTab?: SystemTab }) {
   const { language, t } = useI18n()
   const copy = language === "zh" ? zhCopy : enCopy
@@ -313,6 +337,8 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [statusMonitorDraft, setStatusMonitorDraft] = useState<StatusMonitorDraft>(defaultStatusMonitorDraft)
   const [isStatusMonitorDialogOpen, setIsStatusMonitorDialogOpen] = useState(false)
+  const [announcementDraft, setAnnouncementDraft] = useState<AnnouncementDraft>(defaultAnnouncementDraft)
+  const [isAnnouncementDialogOpen, setIsAnnouncementDialogOpen] = useState(false)
   const [isPremiumNoticeOpen, setIsPremiumNoticeOpen] = useState(false)
   const [status, setStatus] = useState("")
 
@@ -357,6 +383,13 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     queryKey: ["status-monitors"],
     queryFn: async () => {
       const res = await api.get("/status-monitors")
+      return Array.isArray(res.data) ? res.data : []
+    },
+  })
+  const { data: announcements = [] } = useQuery<Announcement[]>({
+    queryKey: ["announcements"],
+    queryFn: async () => {
+      const res = await api.get("/announcements")
       return Array.isArray(res.data) ? res.data : []
     },
   })
@@ -464,6 +497,37 @@ export default function SystemManagement({ section = "general", initialTab }: { 
       queryClient.invalidateQueries({ queryKey: ["status-monitors"] })
     },
     onError: () => setStatus(copy.statusMonitorCheckFailed),
+  })
+
+  const saveAnnouncement = useMutation({
+    mutationFn: async (draft?: AnnouncementDraft) => {
+      const nextDraft = draft || announcementDraft
+      const payload = announcementPayload(nextDraft)
+      if (nextDraft.id) {
+        const res = await api.put(`/announcements/${nextDraft.id}`, payload)
+        return res.data
+      }
+      const res = await api.post("/announcements", payload)
+      return res.data
+    },
+    onSuccess: () => {
+      setAnnouncementDraft(defaultAnnouncementDraft)
+      setIsAnnouncementDialogOpen(false)
+      setStatus(copy.announcementSaved)
+      queryClient.invalidateQueries({ queryKey: ["announcements"] })
+      queryClient.invalidateQueries({ queryKey: ["public-announcements"] })
+    },
+    onError: () => setStatus(copy.announcementSaveFailed),
+  })
+
+  const deleteAnnouncement = useMutation({
+    mutationFn: async (id: number) => api.delete(`/announcements/${id}`),
+    onSuccess: () => {
+      setStatus(copy.announcementDeleted)
+      queryClient.invalidateQueries({ queryKey: ["announcements"] })
+      queryClient.invalidateQueries({ queryKey: ["public-announcements"] })
+    },
+    onError: () => setStatus(copy.announcementDeleteFailed),
   })
 
   const saveSubscriptionPlan = useMutation({
@@ -575,6 +639,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   const canCreateRedeemCode = Number(redeemDraft.amount || 0) > 0 || Boolean(redeemDraft.group_id) || Boolean(redeemDraft.subscription_plan_id)
   const canSaveSubscriptionPlan = Boolean(subscriptionPlanDraft.name.trim()) && Number(subscriptionPlanDraft.reset_amount || 0) > 0 && Number(subscriptionPlanDraft.reset_interval_days || 0) > 0
   const canSaveStatusMonitor = Boolean(statusMonitorDraft.name.trim() && statusMonitorDraft.target_url.trim())
+  const canSaveAnnouncement = Boolean(announcementDraft.title.trim() && announcementDraft.content.trim())
   const visibleRedeemCodes = filterAndSortRedeemCodes(redeemCodes, {
     search: redeemSearch,
     status: redeemStatusFilter,
@@ -830,7 +895,97 @@ export default function SystemManagement({ section = "general", initialTab }: { 
 
       {activeTab === "content" && (
         <SettingsPanel title={copy.content}>
-          <div className="grid gap-4">
+          <div className="grid gap-6">
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <SectionTitle title={copy.announcements} description={copy.announcementsDescription} />
+                <Button
+                  className="gap-2"
+                  onClick={() => {
+                    setAnnouncementDraft(defaultAnnouncementDraft)
+                    setIsAnnouncementDialogOpen(true)
+                  }}
+                >
+                  <Plus size={16} />
+                  {copy.createAnnouncement}
+                </Button>
+              </div>
+              <div className="overflow-x-auto rounded-md border">
+                <div className="min-w-[760px]">
+                  <div className="grid grid-cols-[1.2fr_90px_110px_150px_190px] border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                    <div>{copy.announcementTitle}</div>
+                    <div>{copy.sortOrder}</div>
+                    <div>{copy.status}</div>
+                    <div>{copy.createdAt}</div>
+                    <div className="text-right">{t("common.actions")}</div>
+                  </div>
+                  {announcements.length === 0 ? (
+                    <div className="px-3 py-8 text-center text-sm text-muted-foreground">{copy.noAnnouncements}</div>
+                  ) : (
+                    announcements.map((announcement) => (
+                      <div key={announcement.id} className="grid grid-cols-[1.2fr_90px_110px_150px_190px] items-center border-b px-3 py-3 text-sm last:border-b-0">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{announcement.title}</div>
+                          <div className="truncate text-xs text-muted-foreground">{announcement.content}</div>
+                        </div>
+                        <div>{announcement.sort_order}</div>
+                        <div>{announcement.enabled ? t("common.enabled") : t("common.disabled")}</div>
+                        <div>{formatDateTime(announcement.created_at)}</div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            aria-label={t("common.edit")}
+                            title={t("common.edit")}
+                            onClick={() => {
+                              setAnnouncementDraft({
+                                id: announcement.id,
+                                title: announcement.title,
+                                content: announcement.content,
+                                enabled: announcement.enabled,
+                                sort_order: String(announcement.sort_order || 0),
+                              })
+                              setIsAnnouncementDialogOpen(true)
+                            }}
+                          >
+                            <Pencil size={16} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => saveAnnouncement.mutate({
+                              id: announcement.id,
+                              title: announcement.title,
+                              content: announcement.content,
+                              enabled: !announcement.enabled,
+                              sort_order: String(announcement.sort_order || 0),
+                            })}
+                          >
+                            {announcement.enabled ? t("settings.disable") : t("settings.enable")}
+                          </Button>
+                          <Button variant="outline" size="icon" className="text-red-500 hover:text-red-600" aria-label={t("common.delete")} title={t("common.delete")} onClick={() => deleteAnnouncement.mutate(announcement.id)}>
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <AnnouncementDialog
+                open={isAnnouncementDialogOpen}
+                copy={copy}
+                draft={announcementDraft}
+                canSave={canSaveAnnouncement}
+                isSaving={saveAnnouncement.isPending}
+                onDraftChange={setAnnouncementDraft}
+                onClose={() => {
+                  setIsAnnouncementDialogOpen(false)
+                  setAnnouncementDraft(defaultAnnouncementDraft)
+                }}
+                onSave={() => saveAnnouncement.mutate(undefined)}
+              />
+            </div>
             <TextareaField label={copy.announcement} value={form.announcement} placeholder={copy.announcementPlaceholder} onChange={(value) => updateField("announcement", value)} />
             <TextareaField label={copy.aboutHTML} value={form.about_html} placeholder={copy.aboutHTMLPlaceholder} onChange={(value) => updateField("about_html", value)} />
             <TextareaField label={copy.privacyPolicy} value={form.privacy_policy} placeholder={copy.privacyPolicyPlaceholder} onChange={(value) => updateField("privacy_policy", value)} />
@@ -882,6 +1037,8 @@ export default function SystemManagement({ section = "general", initialTab }: { 
           <div className="grid gap-3 lg:grid-cols-2">
             <ToggleField label={copy.sidebarDashboard} checked={form.sidebar_dashboard_enabled} onChange={(checked) => updateField("sidebar_dashboard_enabled", checked)} />
             <ToggleField label={copy.sidebarUsage} checked={form.sidebar_usage_enabled} onChange={(checked) => updateField("sidebar_usage_enabled", checked)} />
+            <ToggleField label={copy.sidebarWallet} checked={form.sidebar_wallet_enabled} onChange={(checked) => updateField("sidebar_wallet_enabled", checked)} />
+            <ToggleField label={copy.sidebarDataBoard} checked={form.sidebar_data_board_enabled} onChange={(checked) => updateField("sidebar_data_board_enabled", checked)} />
             <ToggleField label={copy.sidebarAPIKeys} checked={form.sidebar_api_keys_enabled} onChange={(checked) => updateField("sidebar_api_keys_enabled", checked)} />
             <ToggleField label={copy.sidebarChat} checked={form.sidebar_chat_enabled} onChange={(checked) => updateField("sidebar_chat_enabled", checked)} />
             <ToggleField label={copy.sidebarImages} checked={form.sidebar_images_enabled} onChange={(checked) => updateField("sidebar_images_enabled", checked)} />
@@ -1400,6 +1557,70 @@ function ToggleField({
   )
 }
 
+function AnnouncementDialog({
+  open,
+  copy,
+  draft,
+  canSave,
+  isSaving,
+  onDraftChange,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  copy: SystemCopy
+  draft: AnnouncementDraft
+  canSave: boolean
+  isSaving: boolean
+  onDraftChange: (draft: AnnouncementDraft) => void
+  onClose: () => void
+  onSave: () => void
+}) {
+  const { t } = useI18n()
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{draft.id ? copy.updateAnnouncement : copy.createAnnouncement}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <TextField
+            label={copy.announcementTitle}
+            value={draft.title}
+            placeholder={copy.announcementTitlePlaceholder}
+            onChange={(value) => onDraftChange({ ...draft, title: value })}
+          />
+          <TextareaField
+            label={copy.announcementContent}
+            value={draft.content}
+            placeholder={copy.announcementContentPlaceholder}
+            onChange={(value) => onDraftChange({ ...draft, content: value })}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField
+              label={copy.sortOrder}
+              value={draft.sort_order}
+              placeholder="0"
+              type="number"
+              onChange={(value) => onDraftChange({ ...draft, sort_order: value })}
+            />
+            <label className="flex h-10 items-center gap-2 self-end text-sm">
+              <input type="checkbox" checked={draft.enabled} onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })} />
+              {copy.enabled}
+            </label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button disabled={!canSave || isSaving} onClick={onSave}>
+            {draft.id ? copy.updateAnnouncement : copy.createAnnouncement}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function StatusMonitorDialog({
   open,
   copy,
@@ -1763,6 +1984,15 @@ function redeemCodePayload(draft: RedeemCodeDraft) {
     max_uses: Number(draft.max_uses || 1),
     enabled: draft.enabled,
     expires_at: draft.expires_at,
+  }
+}
+
+function announcementPayload(draft: AnnouncementDraft) {
+  return {
+    title: draft.title.trim(),
+    content: draft.content.trim(),
+    enabled: draft.enabled,
+    sort_order: Number(draft.sort_order || 0),
   }
 }
 
@@ -2166,6 +2396,20 @@ const zhCopy = {
   oidcRedirectURLPlaceholder: "留空使用环境变量 OIDC_REDIRECT_URL",
   announcement: "系统公告",
   announcementPlaceholder: "显示在用户页面顶部的公告",
+  announcements: "公告列表",
+  announcementsDescription: "管理显示在用户首页下方的多条公告。",
+  createAnnouncement: "添加公告",
+  updateAnnouncement: "更新公告",
+  announcementTitle: "公告标题",
+  announcementTitlePlaceholder: "例如 维护通知",
+  announcementContent: "公告内容",
+  announcementContentPlaceholder: "填写公告正文",
+  noAnnouncements: "暂无公告",
+  sortOrder: "排序",
+  announcementSaved: "公告已保存",
+  announcementSaveFailed: "公告保存失败",
+  announcementDeleted: "公告已删除",
+  announcementDeleteFailed: "公告删除失败",
   aboutHTML: "关于页面 HTML",
   aboutHTMLPlaceholder: "<h2>关于我们</h2><p>...</p>",
   privacyPolicy: "隐私政策",
@@ -2183,6 +2427,8 @@ const zhCopy = {
   deleteTopNavItem: "删除",
   sidebarDashboard: "侧边栏：概览",
   sidebarUsage: "侧边栏：调用记录",
+  sidebarWallet: "侧边栏：钱包",
+  sidebarDataBoard: "侧边栏：数据看板",
   sidebarAPIKeys: "侧边栏：令牌",
   sidebarChat: "侧边栏：聊天",
   sidebarImages: "侧边栏：AI 绘画",
@@ -2422,6 +2668,20 @@ const enCopy: SystemCopy = {
   oidcRedirectURLPlaceholder: "Empty uses OIDC_REDIRECT_URL",
   announcement: "System announcement",
   announcementPlaceholder: "Announcement shown at the top of user pages",
+  announcements: "Announcements",
+  announcementsDescription: "Manage the announcement list shown on the user dashboard.",
+  createAnnouncement: "Add announcement",
+  updateAnnouncement: "Update announcement",
+  announcementTitle: "Announcement title",
+  announcementTitlePlaceholder: "For example, Maintenance notice",
+  announcementContent: "Announcement content",
+  announcementContentPlaceholder: "Enter announcement body",
+  noAnnouncements: "No announcements",
+  sortOrder: "Sort order",
+  announcementSaved: "Announcement saved",
+  announcementSaveFailed: "Failed to save announcement",
+  announcementDeleted: "Announcement deleted",
+  announcementDeleteFailed: "Failed to delete announcement",
   aboutHTML: "About page HTML",
   aboutHTMLPlaceholder: "<h2>About</h2><p>...</p>",
   privacyPolicy: "Privacy policy",
@@ -2439,6 +2699,8 @@ const enCopy: SystemCopy = {
   deleteTopNavItem: "Delete",
   sidebarDashboard: "Sidebar: Dashboard",
   sidebarUsage: "Sidebar: Call Records",
+  sidebarWallet: "Sidebar: Wallet",
+  sidebarDataBoard: "Sidebar: Data Board",
   sidebarAPIKeys: "Sidebar: API Keys",
   sidebarChat: "Sidebar: Chat",
   sidebarImages: "Sidebar: AI Images",

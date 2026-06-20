@@ -1,4 +1,4 @@
-import { Activity, BarChart3, CreditCard, Database, DollarSign, LineChart, PieChart } from "lucide-react"
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, Clock, CreditCard, Database, DollarSign, LineChart, Megaphone, Server } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,13 +22,24 @@ interface UserStats {
   tpm: number
 }
 
-interface TokenLog {
+interface Announcement {
   id: number
+  title: string
+  content: string
   created_at: string
-  cost: string | number
-  model_name: string
-  input_tokens: number
-  output_tokens: number
+}
+
+interface PublicStatusMonitor {
+  id: number
+  name: string
+  status: string
+  latency_ms: number
+  last_checked_at?: string | null
+  uptime: number
+}
+
+interface PublicStatusResponse {
+  monitors: PublicStatusMonitor[]
 }
 
 interface StatCard {
@@ -47,19 +58,11 @@ export default function Dashboard() {
       return res.data
     },
   })
-
   const { data: userStats } = useQuery<UserStats>({
     queryKey: ["stats", "user"],
     queryFn: async () => {
       const res = await api.get("/user/stats")
       return res.data
-    },
-  })
-  const { data: logs = [] } = useQuery<TokenLog[]>({
-    queryKey: ["logs", "user", "dashboard"],
-    queryFn: async () => {
-      const res = await api.get("/user/logs")
-      return Array.isArray(res.data) ? res.data : []
     },
   })
   const { data: settings } = useQuery<PublicSettings>({
@@ -69,11 +72,26 @@ export default function Dashboard() {
       return res.data
     },
   })
+  const { data: announcements = [], isLoading: isAnnouncementsLoading } = useQuery<Announcement[]>({
+    queryKey: ["public-announcements"],
+    queryFn: async () => {
+      const res = await api.get("/public/announcements")
+      return Array.isArray(res.data) ? res.data : []
+    },
+  })
+  const { data: publicStatus, isLoading: isStatusLoading, isError: isStatusError } = useQuery<PublicStatusResponse>({
+    queryKey: ["public-status"],
+    queryFn: async () => {
+      const res = await api.get("/public/status")
+      return res.data
+    },
+    retry: false,
+    refetchInterval: 30000,
+  })
+
   const currencyDisplayName = withPublicSettingsDefaults(settings).payment_currency_display_name
-  const hourlySpend = buildHourlySpend(logs)
-  const dailyTrend = buildDailyTrend(logs)
-  const modelTrend = buildModelTrend(logs)
-  const tokenUsage = buildTokenUsage(logs)
+  const cards = isUserLoading ? userCards(t, currencyDisplayName) : userCards(t, currencyDisplayName, userStats, user)
+  const monitors = publicStatus?.monitors || []
 
   return (
     <div className="space-y-8">
@@ -85,7 +103,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {(isUserLoading ? userCards(t, currencyDisplayName) : userCards(t, currencyDisplayName, userStats, user)).map((card) => (
+        {cards.map((card) => (
           <Card key={card.title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
@@ -98,47 +116,78 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>{t("dashboard.hourlySpend")}</CardTitle>
-          <BarChart3 className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <HourlySpendChart data={hourlySpend} currencyDisplayName={currencyDisplayName} />
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{t("dashboard.dailyTrend")}</CardTitle>
-            <LineChart className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>{t("dashboard.announcements")}</CardTitle>
+            <Megaphone className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <DailyTrendChart data={dailyTrend} currencyDisplayName={currencyDisplayName} />
+            {isAnnouncementsLoading ? (
+              <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">{t("common.loading")}</div>
+            ) : announcements.length === 0 ? (
+              <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">{t("dashboard.noAnnouncements")}</div>
+            ) : (
+              <div className="space-y-3">
+                {announcements.map((announcement) => (
+                  <article key={announcement.id} className="rounded-md border p-4">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <h2 className="text-base font-semibold">{announcement.title}</h2>
+                      <div className="shrink-0 text-xs text-muted-foreground">{formatDateTime(announcement.created_at)}</div>
+                    </div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{announcement.content}</div>
+                  </article>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{t("dashboard.modelTrend")}</CardTitle>
-            <BarChart3 className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>{t("dashboard.nodeStatus")}</CardTitle>
+            <Server className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <ModelTrendChart data={modelTrend} />
+            {isStatusLoading ? (
+              <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">{t("common.loading")}</div>
+            ) : isStatusError ? (
+              <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">{t("dashboard.statusUnavailable")}</div>
+            ) : monitors.length === 0 ? (
+              <div className="rounded-md border p-6 text-center text-sm text-muted-foreground">{t("dashboard.noNodeStatus")}</div>
+            ) : (
+              <div className="grid gap-3">
+                {monitors.map((monitor) => (
+                  <div key={monitor.id} className="rounded-md border p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{monitor.name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t("dashboard.lastCheck")}: {formatDateTime(monitor.last_checked_at)}
+                        </div>
+                      </div>
+                      <div className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-medium", statusBadgeClass(monitor.status))}>
+                        <StatusIcon status={monitor.status} />
+                        {statusLabel(monitor.status, t)}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <div className="text-xs text-muted-foreground">{t("dashboard.latency")}</div>
+                        <div className="mt-1 font-medium">{formatLatency(monitor.latency_ms)}</div>
+                      </div>
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <div className="text-xs text-muted-foreground">{t("dashboard.uptime")}</div>
+                        <div className="mt-1 font-medium">{formatPercent(monitor.uptime)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>{t("dashboard.tokenUsage")}</CardTitle>
-          <PieChart className="h-5 w-5 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <TokenUsageChart data={tokenUsage} />
-        </CardContent>
-      </Card>
     </div>
   )
 }
@@ -154,250 +203,60 @@ function userCards(t: ReturnType<typeof useI18n>["t"], currencyDisplayName: stri
   ]
 }
 
-function HourlySpendChart({ data, currencyDisplayName }: { data: HourSpend[]; currencyDisplayName: string }) {
-  const maxCost = Math.max(...data.map((item) => item.cost), 0)
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto">
-        <div className="flex h-40 min-w-[520px] items-end gap-1 rounded-md border p-3">
-          {data.map((item) => {
-            const height = maxCost > 0 ? Math.max(4, (item.cost / maxCost) * 128) : 4
-            return (
-              <div key={item.hour} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                <div
-                  className="w-full rounded-t bg-primary/80"
-                  style={{ height }}
-                  title={`${hourLabel(item.hour)} ${currencyDisplayName}${item.cost.toFixed(4)}`}
-                />
-                <div className="h-4 text-[10px] text-muted-foreground">
-                  {item.hour % 3 === 0 ? String(item.hour).padStart(2, "0") : ""}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>00:00</span>
-        <span>12:00</span>
-        <span>23:00</span>
-      </div>
-    </div>
-  )
-}
-
-interface HourSpend {
-  hour: number
-  cost: number
-}
-
-function buildHourlySpend(logs: TokenLog[]): HourSpend[] {
-  const data = Array.from({ length: 24 }, (_, hour) => ({ hour, cost: 0 }))
-  for (const log of logs) {
-    const hour = new Date(log.created_at).getHours()
-    if (!Number.isFinite(hour) || hour < 0 || hour > 23) {
-      continue
-    }
-    data[hour].cost += Number(log.cost || 0)
-  }
-  return data
-}
-
-function hourLabel(hour: number) {
-  return `${String(hour).padStart(2, "0")}:00`
-}
-
-interface DailySpend {
-  date: Date
-  cost: number
-  requests: number
-}
-
-function DailyTrendChart({ data, currencyDisplayName }: { data: DailySpend[]; currencyDisplayName: string }) {
-  const maxCost = Math.max(...data.map((item) => item.cost), 0)
-  return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto">
-        <div className="flex h-44 min-w-[360px] items-end gap-2 rounded-md border p-3">
-          {data.map((item) => {
-            const height = maxCost > 0 ? Math.max(4, (item.cost / maxCost) * 132) : 4
-            return (
-              <div key={item.date.toISOString()} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                <div className="text-[10px] text-muted-foreground">{item.requests}</div>
-                <div
-                  className="w-full max-w-10 rounded-t bg-green-500/80"
-                  style={{ height }}
-                  title={`${dateLabel(item.date)} ${currencyDisplayName}${item.cost.toFixed(4)} / ${item.requests}`}
-                />
-                <div className="h-4 text-[10px] text-muted-foreground">{shortDateLabel(item.date)}</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-interface ModelTrend {
-  days: DailyModelCall[]
-  models: string[]
-}
-
-interface DailyModelCall {
-  date: Date
-  counts: Record<string, number>
-  total: number
-}
-
-function ModelTrendChart({ data }: { data: ModelTrend }) {
-  const maxTotal = Math.max(...data.days.map((item) => item.total), 0)
-  return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto">
-        <div className="flex h-44 min-w-[360px] items-end gap-2 rounded-md border p-3">
-          {data.days.map((day) => {
-            const height = maxTotal > 0 ? Math.max(4, (day.total / maxTotal) * 132) : 4
-            return (
-              <div key={day.date.toISOString()} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                <div className="flex w-full max-w-10 flex-col-reverse overflow-hidden rounded-t" style={{ height }}>
-                  {data.models.map((modelName, index) => {
-                    const count = day.counts[modelName] || 0
-                    const segmentHeight = day.total > 0 ? (count / day.total) * height : 0
-                    return (
-                      <div
-                        key={modelName}
-                        style={{ height: segmentHeight, backgroundColor: chartColors[index % chartColors.length] }}
-                        title={`${modelName}: ${count}`}
-                      />
-                    )
-                  })}
-                </div>
-                <div className="h-4 text-[10px] text-muted-foreground">{shortDateLabel(day.date)}</div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        {data.models.map((modelName, index) => (
-          <span key={modelName} className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chartColors[index % chartColors.length] }} />
-            {modelName}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-interface TokenUsage {
-  input: number
-  output: number
-}
-
-function TokenUsageChart({ data }: { data: TokenUsage }) {
-  const { t } = useI18n()
-  const total = data.input + data.output
-  const inputPercent = total > 0 ? (data.input / total) * 100 : 0
-  const outputPercent = total > 0 ? (data.output / total) * 100 : 0
-  return (
-    <div className="space-y-4">
-      <div className="flex h-6 overflow-hidden rounded-md border">
-        <div className="bg-blue-500" style={{ width: `${inputPercent}%` }} title={`${data.input}`} />
-        <div className="bg-amber-500" style={{ width: `${outputPercent}%` }} title={`${data.output}`} />
-      </div>
-      <div className="grid gap-3 text-sm md:grid-cols-2">
-        <div className="rounded-md border p-3">
-          <div className="text-xs text-muted-foreground">{t("dashboard.inputTokens")}</div>
-          <div className="mt-1 text-xl font-semibold">{data.input}</div>
-        </div>
-        <div className="rounded-md border p-3">
-          <div className="text-xs text-muted-foreground">{t("dashboard.outputTokens")}</div>
-          <div className="mt-1 text-xl font-semibold">{data.output}</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function buildDailyTrend(logs: TokenLog[]): DailySpend[] {
-  const days = recentDays(7)
-  const keyed = new Map(days.map((date) => [dateKey(date), { date, cost: 0, requests: 0 }]))
-  for (const log of logs) {
-    const key = dateKey(new Date(log.created_at))
-    const item = keyed.get(key)
-    if (!item) {
-      continue
-    }
-    item.cost += Number(log.cost || 0)
-    item.requests += 1
-  }
-  return days.map((date) => keyed.get(dateKey(date)) || { date, cost: 0, requests: 0 })
-}
-
-function buildModelTrend(logs: TokenLog[]): ModelTrend {
-  const days = recentDays(7)
-  const modelTotals = new Map<string, number>()
-  for (const log of logs) {
-    const modelName = log.model_name || "-"
-    modelTotals.set(modelName, (modelTotals.get(modelName) || 0) + 1)
-  }
-  const models = Array.from(modelTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([modelName]) => modelName)
-  if (modelTotals.size > models.length) {
-    models.push("Other")
-  }
-  const modelSet = new Set(models)
-  const keyed = new Map(days.map((date) => [dateKey(date), { date, counts: {}, total: 0 } as DailyModelCall]))
-  for (const log of logs) {
-    const key = dateKey(new Date(log.created_at))
-    const day = keyed.get(key)
-    if (!day) {
-      continue
-    }
-    const modelName = modelSet.has(log.model_name) ? log.model_name : "Other"
-    day.counts[modelName] = (day.counts[modelName] || 0) + 1
-    day.total += 1
-  }
-  return {
-    days: days.map((date) => keyed.get(dateKey(date)) || { date, counts: {}, total: 0 }),
-    models,
+function StatusIcon({ status }: { status: string }) {
+  switch ((status || "").toLowerCase()) {
+    case "up":
+      return <CheckCircle2 size={14} />
+    case "down":
+      return <AlertTriangle size={14} />
+    default:
+      return <Clock size={14} />
   }
 }
 
-function buildTokenUsage(logs: TokenLog[]): TokenUsage {
-  return logs.reduce<TokenUsage>(
-    (total, log) => ({
-      input: total.input + Number(log.input_tokens || 0),
-      output: total.output + Number(log.output_tokens || 0),
-    }),
-    { input: 0, output: 0 }
-  )
+function statusBadgeClass(status: string) {
+  switch ((status || "").toLowerCase()) {
+    case "up":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+    case "down":
+      return "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+    default:
+      return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+  }
 }
 
-function recentDays(count: number) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(today)
-    date.setDate(today.getDate() - count + 1 + index)
-    return date
-  })
+function statusLabel(status: string, t: ReturnType<typeof useI18n>["t"]) {
+  switch ((status || "").toLowerCase()) {
+    case "up":
+      return t("dashboard.statusUp")
+    case "down":
+      return t("dashboard.statusDown")
+    default:
+      return t("dashboard.statusPending")
+  }
 }
 
-function dateKey(date: Date) {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+function formatLatency(value: number) {
+  if (!value || value <= 0) {
+    return "-"
+  }
+  return `${value}ms`
 }
 
-function shortDateLabel(date: Date) {
-  return `${date.getMonth() + 1}/${date.getDate()}`
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return "-"
+  }
+  return `${value.toFixed(2)}%`
 }
 
-function dateLabel(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+function formatDateTime(value?: string | null) {
+  if (!value) {
+    return "-"
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString()
 }
-
-const chartColors = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed"]
