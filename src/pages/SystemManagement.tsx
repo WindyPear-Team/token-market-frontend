@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import type { AxiosError } from "axios"
 import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -77,11 +78,36 @@ interface SubscriptionPlan {
   created_at: string
 }
 
+interface MetaModel {
+  id: number
+  name: string
+  description: string
+  dsl: string
+  billing_mode: string
+  input_price: string | number
+  output_price: string | number
+  cached_input_price: string | number
+  enabled: boolean
+  created_at: string
+}
+
 interface SubscriptionPlanDraft {
   id?: number
   name: string
   reset_amount: string
   reset_interval_days: string
+  enabled: boolean
+}
+
+interface MetaModelDraft {
+  id?: number
+  name: string
+  description: string
+  dsl: string
+  billing_mode: string
+  input_price: string
+  output_price: string
+  cached_input_price: string
   enabled: boolean
 }
 
@@ -212,6 +238,7 @@ type SystemTab =
   | "navigation"
   | "statusMonitor"
   | "groups"
+  | "metaModels"
   | "subscriptionPlans"
   | "redeemCodes"
 
@@ -221,12 +248,12 @@ const systemSectionTabs: Record<SystemSection, SystemTab[]> = {
   general: ["basic", "billing", "checkIn", "security"],
   auth: ["auth", "email"],
   content: ["content", "topNavigation", "navigation"],
-  operations: ["statusMonitor", "payment", "groups", "subscriptionPlans", "redeemCodes"],
+  operations: ["statusMonitor", "payment", "groups", "metaModels", "subscriptionPlans", "redeemCodes"],
   subscriptions: ["subscriptionPlans"],
   redeemCodes: ["redeemCodes"],
 }
 
-const premiumOnlySystemTabs: SystemTab[] = ["subscriptionPlans", "redeemCodes"]
+const premiumOnlySystemTabs: SystemTab[] = ["metaModels", "subscriptionPlans", "redeemCodes"]
 
 interface NavRow {
   id: string
@@ -298,6 +325,17 @@ const defaultSubscriptionPlanDraft: SubscriptionPlanDraft = {
   enabled: true,
 }
 
+const defaultMetaModelDraft: MetaModelDraft = {
+  name: "",
+  description: "",
+  dsl: "",
+  billing_mode: "actual",
+  input_price: "0",
+  output_price: "0",
+  cached_input_price: "0",
+  enabled: true,
+}
+
 const defaultStatusMonitorDraft: StatusMonitorDraft = {
   name: "",
   target_url: "",
@@ -333,6 +371,8 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   const [selectedRedeemCodeIDs, setSelectedRedeemCodeIDs] = useState<number[]>([])
   const [subscriptionPlanDraft, setSubscriptionPlanDraft] = useState<SubscriptionPlanDraft>(defaultSubscriptionPlanDraft)
   const [isSubscriptionPlanDialogOpen, setIsSubscriptionPlanDialogOpen] = useState(false)
+  const [metaModelDraft, setMetaModelDraft] = useState<MetaModelDraft>(defaultMetaModelDraft)
+  const [isMetaModelDialogOpen, setIsMetaModelDialogOpen] = useState(false)
   const [groupDraft, setGroupDraft] = useState<GroupDraft>(defaultGroupDraft)
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
   const [statusMonitorDraft, setStatusMonitorDraft] = useState<StatusMonitorDraft>(defaultStatusMonitorDraft)
@@ -369,6 +409,14 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     enabled: settings?.edition === "premium",
     queryFn: async () => {
       const res = await api.get("/subscription-plans")
+      return Array.isArray(res.data) ? res.data : []
+    },
+  })
+  const { data: metaModels = [] } = useQuery<MetaModel[]>({
+    queryKey: ["meta-models"],
+    enabled: settings?.edition === "premium",
+    queryFn: async () => {
+      const res = await api.get("/meta-models")
       return Array.isArray(res.data) ? res.data : []
     },
   })
@@ -558,6 +606,45 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     onError: () => setStatus(copy.subscriptionPlanDeleteFailed),
   })
 
+  const saveMetaModel = useMutation({
+    mutationFn: async () => {
+      const payload = metaModelPayload(metaModelDraft)
+      if (metaModelDraft.id) {
+        const res = await api.put(`/meta-models/${metaModelDraft.id}`, payload)
+        return res.data
+      }
+      const res = await api.post("/meta-models", payload)
+      return res.data
+    },
+    onSuccess: () => {
+      setMetaModelDraft(defaultMetaModelDraft)
+      setIsMetaModelDialogOpen(false)
+      setStatus(copy.metaModelSaved)
+      queryClient.invalidateQueries({ queryKey: ["meta-models"] })
+      queryClient.invalidateQueries({ queryKey: ["public-models"] })
+    },
+    onError: (error) => setStatus(apiErrorMessage(error, copy.metaModelSaveFailed)),
+  })
+
+  const validateMetaModel = useMutation({
+    mutationFn: async () => {
+      const res = await api.post("/meta-models/validate", metaModelPayload(metaModelDraft))
+      return res.data
+    },
+    onSuccess: () => setStatus(copy.metaModelValid),
+    onError: (error) => setStatus(apiErrorMessage(error, copy.metaModelInvalid)),
+  })
+
+  const deleteMetaModel = useMutation({
+    mutationFn: async (id: number) => api.delete(`/meta-models/${id}`),
+    onSuccess: () => {
+      setStatus(copy.metaModelDeleted)
+      queryClient.invalidateQueries({ queryKey: ["meta-models"] })
+      queryClient.invalidateQueries({ queryKey: ["public-models"] })
+    },
+    onError: () => setStatus(copy.metaModelDeleteFailed),
+  })
+
   const createRedeemCode = useMutation({
     mutationFn: async () => {
       const res = await api.post("/redeem-codes", redeemCodePayload(redeemDraft))
@@ -634,10 +721,11 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     })
   }
 
-  const shouldShowSave = !["groups", "subscriptionPlans", "redeemCodes"].includes(activeTab)
+  const shouldShowSave = !["groups", "metaModels", "subscriptionPlans", "redeemCodes"].includes(activeTab)
   const visibleTabs = systemTabs(copy).filter((tab) => allowedTabs.includes(tab.id))
   const canCreateRedeemCode = Number(redeemDraft.amount || 0) > 0 || Boolean(redeemDraft.group_id) || Boolean(redeemDraft.subscription_plan_id)
   const canSaveSubscriptionPlan = Boolean(subscriptionPlanDraft.name.trim()) && Number(subscriptionPlanDraft.reset_amount || 0) > 0 && Number(subscriptionPlanDraft.reset_interval_days || 0) > 0
+  const canSaveMetaModel = Boolean(metaModelDraft.name.trim() && metaModelDraft.dsl.trim())
   const canSaveStatusMonitor = Boolean(statusMonitorDraft.name.trim() && statusMonitorDraft.target_url.trim())
   const canSaveAnnouncement = Boolean(announcementDraft.title.trim() && announcementDraft.content.trim())
   const visibleRedeemCodes = filterAndSortRedeemCodes(redeemCodes, {
@@ -1293,6 +1381,90 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
+      {isPremiumEdition && activeTab === "metaModels" && (
+        <SettingsPanel title={copy.metaModels}>
+          <div className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium">{copy.metaModels}</div>
+                <div className="text-xs text-muted-foreground">{copy.metaModelsDescription}</div>
+              </div>
+              <Button
+                className="gap-2"
+                onClick={() => {
+                  setMetaModelDraft(defaultMetaModelDraft)
+                  setIsMetaModelDialogOpen(true)
+                }}
+              >
+                <Plus size={16} />
+                {copy.createMetaModel}
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto rounded-md border">
+              <div className="min-w-[920px]">
+                <div className="grid grid-cols-[1fr_120px_130px_130px_130px_120px_190px] border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <div>{copy.metaModelName}</div>
+                  <div>{copy.billingMode}</div>
+                  <div>{copy.inputPrice}</div>
+                  <div>{copy.outputPrice}</div>
+                  <div>{copy.cachedInputPrice}</div>
+                  <div>{copy.status}</div>
+                  <div className="text-right">{t("common.actions")}</div>
+                </div>
+                {metaModels.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-sm text-muted-foreground">{copy.noMetaModels}</div>
+                ) : (
+                  metaModels.map((item) => (
+                    <div key={item.id} className="grid grid-cols-[1fr_120px_130px_130px_130px_120px_190px] items-center border-b px-3 py-3 text-sm last:border-b-0">
+                      <div className="min-w-0">
+                        <div className="truncate font-mono text-xs font-medium">{item.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">{item.description || "-"}</div>
+                      </div>
+                      <div>{metaBillingModeLabel(item.billing_mode, copy)}</div>
+                      <div>{formatMetaPriceValue(item)}</div>
+                      <div>{formatMetaPriceValue(item, "output_price")}</div>
+                      <div>{formatMetaPriceValue(item, "cached_input_price")}</div>
+                      <div>{item.enabled ? copy.enabled : copy.disabled}</div>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setMetaModelDraft(metaModelToDraft(item))
+                            setIsMetaModelDialogOpen(true)
+                          }}
+                        >
+                          {t("common.edit")}
+                        </Button>
+                        <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => deleteMetaModel.mutate(item.id)}>
+                          {t("common.delete")}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            <MetaModelDialog
+              open={isMetaModelDialogOpen}
+              copy={copy}
+              draft={metaModelDraft}
+              canSave={canSaveMetaModel}
+              isSaving={saveMetaModel.isPending}
+              isValidating={validateMetaModel.isPending}
+              onDraftChange={setMetaModelDraft}
+              onClose={() => {
+                setIsMetaModelDialogOpen(false)
+                setMetaModelDraft(defaultMetaModelDraft)
+              }}
+              onValidate={() => validateMetaModel.mutate()}
+              onSave={() => saveMetaModel.mutate()}
+            />
+          </div>
+        </SettingsPanel>
+      )}
+
       {isPremiumEdition && activeTab === "redeemCodes" && (
         <SettingsPanel title={copy.redeemCodes}>
           <div className="space-y-5">
@@ -1450,6 +1622,7 @@ function systemTabs(copy: SystemCopy): Array<{ id: SystemTab; label: string; ico
     { id: "navigation", label: copy.navigation, icon: ToggleLeft },
     { id: "statusMonitor", label: copy.statusMonitor, icon: Activity },
     { id: "groups", label: copy.groups, icon: Layers },
+    { id: "metaModels", label: copy.metaModels, icon: Layers },
     { id: "subscriptionPlans", label: copy.subscriptionPlans, icon: HandCoins },
     { id: "redeemCodes", label: copy.redeemCodes, icon: Gift },
   ]
@@ -1920,6 +2093,84 @@ function SubscriptionPlanDialog({
   )
 }
 
+function MetaModelDialog({
+  open,
+  copy,
+  draft,
+  canSave,
+  isSaving,
+  isValidating,
+  onDraftChange,
+  onClose,
+  onValidate,
+  onSave,
+}: {
+  open: boolean
+  copy: SystemCopy
+  draft: MetaModelDraft
+  canSave: boolean
+  isSaving: boolean
+  isValidating: boolean
+  onDraftChange: (draft: MetaModelDraft) => void
+  onClose: () => void
+  onValidate: () => void
+  onSave: () => void
+}) {
+  const { t } = useI18n()
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{draft.id ? copy.updateMetaModel : copy.createMetaModel}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <TextField label={copy.metaModelName} value={draft.name} placeholder={copy.metaModelNamePlaceholder} onChange={(value) => onDraftChange({ ...draft, name: value })} />
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium">{copy.billingMode}</span>
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={draft.billing_mode}
+                onChange={(event) => {
+                  const billingMode = event.target.value
+                  onDraftChange({
+                    ...draft,
+                    billing_mode: billingMode,
+                    input_price: billingMode === "meta" ? draft.input_price : "0",
+                    output_price: billingMode === "meta" ? draft.output_price : "0",
+                    cached_input_price: billingMode === "meta" ? draft.cached_input_price : "0",
+                  })
+                }}
+              >
+                <option value="actual">{copy.billingModeActual}</option>
+                <option value="meta">{copy.billingModeMeta}</option>
+              </select>
+            </label>
+          </div>
+          <TextField label={copy.description} value={draft.description} placeholder={copy.metaModelDescriptionPlaceholder} onChange={(value) => onDraftChange({ ...draft, description: value })} />
+          {draft.billing_mode === "meta" && (
+            <div className="grid gap-3 md:grid-cols-3">
+              <TextField label={copy.inputPrice} value={draft.input_price} placeholder="0" type="number" onChange={(value) => onDraftChange({ ...draft, input_price: value })} />
+              <TextField label={copy.outputPrice} value={draft.output_price} placeholder="0" type="number" onChange={(value) => onDraftChange({ ...draft, output_price: value })} />
+              <TextField label={copy.cachedInputPrice} value={draft.cached_input_price} placeholder="0" type="number" onChange={(value) => onDraftChange({ ...draft, cached_input_price: value })} />
+            </div>
+          )}
+          <TextareaField label={copy.metaModelDSL} value={draft.dsl} placeholder={copy.metaModelDSLPlaceholder} help={copy.metaModelDSLHelp} onChange={(value) => onDraftChange({ ...draft, dsl: value })} />
+          <label className="flex h-10 items-center gap-2 text-sm">
+            <input type="checkbox" checked={draft.enabled} onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })} />
+            {copy.enabled}
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button variant="outline" disabled={!canSave || isValidating} onClick={onValidate}>{copy.validateMetaModel}</Button>
+          <Button disabled={!canSave || isSaving} onClick={onSave}>{draft.id ? copy.updateMetaModel : copy.createMetaModel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function parseTopNavRows(raw: string): NavRow[] {
   return parseTopNavItems(raw).map((item, index) => ({
     id: navRowID(index),
@@ -2003,6 +2254,55 @@ function subscriptionPlanPayload(draft: SubscriptionPlanDraft) {
     reset_interval_days: Number(draft.reset_interval_days || 0),
     enabled: draft.enabled,
   }
+}
+
+function metaModelPayload(draft: MetaModelDraft) {
+  const isMetaBilling = draft.billing_mode === "meta"
+  return {
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    dsl: draft.dsl.trim(),
+    billing_mode: draft.billing_mode,
+    input_price: isMetaBilling ? Number(draft.input_price || 0) : 0,
+    output_price: isMetaBilling ? Number(draft.output_price || 0) : 0,
+    cached_input_price: isMetaBilling ? Number(draft.cached_input_price || 0) : 0,
+    enabled: draft.enabled,
+  }
+}
+
+function metaModelToDraft(item: MetaModel): MetaModelDraft {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description || "",
+    dsl: item.dsl || "",
+    billing_mode: item.billing_mode || "actual",
+    input_price: String(item.input_price ?? 0),
+    output_price: String(item.output_price ?? 0),
+    cached_input_price: String(item.cached_input_price ?? 0),
+    enabled: item.enabled,
+  }
+}
+
+function metaBillingModeLabel(value: string, copy: SystemCopy) {
+  return value === "meta" ? copy.billingModeMetaShort : copy.billingModeActualShort
+}
+
+function formatMetaPriceValue(item: MetaModel, key: "input_price" | "output_price" | "cached_input_price" = "input_price") {
+  if (item.billing_mode !== "meta") {
+    return "-"
+  }
+  return formatPriceValue(item[key])
+}
+
+function formatPriceValue(value: string | number) {
+  const parsed = Number(value || 0)
+  return `$${(Number.isFinite(parsed) ? parsed : 0).toFixed(6)}`
+}
+
+function apiErrorMessage(error: unknown, fallback: string) {
+  const axiosError = error as AxiosError<{ error?: string; message?: string }>
+  return axiosError.response?.data?.error || axiosError.response?.data?.message || (error instanceof Error ? error.message : fallback)
 }
 
 function statusBadgeClass(status: string) {
@@ -2459,6 +2759,33 @@ const zhCopy = {
   noGroupGrant: "不授予分组",
   groupDuration: "分组时长",
   groupDurationPlaceholder: "分组天数，0 为永久",
+  metaModels: "元模型",
+  metaModelsDescription: "使用 Meta Module Language 创建动态路由模型",
+  createMetaModel: "创建元模型",
+  updateMetaModel: "更新元模型",
+  metaModelSaved: "元模型已保存",
+  metaModelSaveFailed: "元模型保存失败",
+  metaModelDeleted: "元模型已删除",
+  metaModelDeleteFailed: "元模型删除失败",
+  metaModelValid: "元模型 DSL 校验通过",
+  metaModelInvalid: "元模型 DSL 校验失败",
+  noMetaModels: "暂无元模型",
+  metaModelName: "元模型名称",
+  metaModelNamePlaceholder: "例如 meta-smart",
+  description: "描述",
+  metaModelDescriptionPlaceholder: "说明这个元模型的用途",
+  billingMode: "计费模式",
+  billingModeActual: "按实际调用模型计费",
+  billingModeMeta: "按元模型独立价格计费",
+  billingModeActualShort: "实际调用",
+  billingModeMetaShort: "元模型",
+  inputPrice: "输入价格",
+  outputPrice: "输出价格",
+  cachedInputPrice: "缓存输入价格",
+  metaModelDSL: "Meta Module Language",
+  metaModelDSLPlaceholder: "route {\n  when request.input_tokens <= 2000 => call \"your-real-model-a\"\n  otherwise => call \"your-real-model-b\"\n}",
+  metaModelDSLHelp: "call 中的模型名必须是已存在的真实模型。当前执行支持 call 和 route；parallel、synthesize、judge 可解析但暂未执行。",
+  validateMetaModel: "校验 DSL",
   subscriptionPlans: "订阅套餐",
   subscriptionPlansDescription: "创建可通过兑换码授予的周期额度套餐",
   createSubscriptionPlan: "创建套餐",
@@ -2731,6 +3058,33 @@ const enCopy: SystemCopy = {
   noGroupGrant: "No group grant",
   groupDuration: "Group duration",
   groupDurationPlaceholder: "Days, 0 means permanent",
+  metaModels: "Meta Models",
+  metaModelsDescription: "Create dynamic routing models with Meta Module Language.",
+  createMetaModel: "Create meta model",
+  updateMetaModel: "Update meta model",
+  metaModelSaved: "Meta model saved",
+  metaModelSaveFailed: "Failed to save meta model",
+  metaModelDeleted: "Meta model deleted",
+  metaModelDeleteFailed: "Failed to delete meta model",
+  metaModelValid: "Meta model Language is valid",
+  metaModelInvalid: "Meta model Language is invalid",
+  noMetaModels: "No meta models",
+  metaModelName: "Meta model name",
+  metaModelNamePlaceholder: "For example, meta-smart",
+  description: "Description",
+  metaModelDescriptionPlaceholder: "Describe what this meta model is for",
+  billingMode: "Billing mode",
+  billingModeActual: "Bill actual called model",
+  billingModeMeta: "Bill meta model prices",
+  billingModeActualShort: "Actual",
+  billingModeMetaShort: "Meta",
+  inputPrice: "Input price",
+  outputPrice: "Output price",
+  cachedInputPrice: "Cached input price",
+  metaModelDSL: "Meta Module Language",
+  metaModelDSLPlaceholder: "route {\n  when request.input_tokens <= 2000 => call \"your-real-model-a\"\n  otherwise => call \"your-real-model-b\"\n}",
+  metaModelDSLHelp: "Model names in call must reference existing real models. Current execution supports call and route. parallel, synthesize, and judge can be parsed but are not executed yet.",
+  validateMetaModel: "Validate Language",
   subscriptionPlans: "Subscription Plans",
   subscriptionPlansDescription: "Create recurring quota plans that can be granted by redeem codes.",
   createSubscriptionPlan: "Create plan",

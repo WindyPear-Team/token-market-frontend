@@ -24,9 +24,12 @@ interface PriceTier {
 
 interface PublicModel {
   model_name: string
+  description?: string
   provider: string
   provider_name: string
   provider_icon_url: string
+  is_meta_model?: boolean
+  meta_billing_mode?: string
   input_price: string | number
   output_price: string | number
   cached_input_price: string | number
@@ -34,6 +37,7 @@ interface PublicModel {
   output_price_tiers: PriceTier[]
   cached_input_price_tiers: PriceTier[]
   user_channels: PublicModelUserChannel[]
+  referenced_models?: PublicModel[]
 }
 
 interface PublicModelUserChannel {
@@ -192,7 +196,10 @@ export default function ModelCatalog() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <CardTitle className="break-all font-mono text-lg">{item.model_name}</CardTitle>
-                      <Provider providerName={item.provider_name} iconURL={item.provider_icon_url} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Provider providerName={item.provider_name} iconURL={item.provider_icon_url} />
+                        {item.is_meta_model && <MetaModelBadge copy={copy} mode={item.meta_billing_mode} />}
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-sm sm:min-w-80">
                       <PriceBox label={copy.inputPrice} value={item.input_price} tiers={item.input_price_tiers} />
@@ -241,7 +248,9 @@ function ModelDetailDialog({
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-3">
                 <Provider providerName={model.provider_name} iconURL={model.provider_icon_url} />
+                {model.is_meta_model && <MetaModelBadge copy={copy} mode={model.meta_billing_mode} />}
               </div>
+              {model.description && <p className="text-sm text-muted-foreground">{model.description}</p>}
 
               <section className="space-y-3">
                 <div className="text-sm font-medium">{detailCopy(copy).basePricing}</div>
@@ -251,6 +260,22 @@ function ModelDetailDialog({
                   <PriceBox label={copy.cachedInputPrice} value={model.cached_input_price} tiers={model.cached_input_price_tiers} showTiers />
                 </div>
               </section>
+
+              {model.is_meta_model && (
+                <section className="space-y-3">
+                  <div>
+                    <div className="text-sm font-medium">{copy.referencedModels}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {model.meta_billing_mode === "meta" ? copy.metaBillingDescription : copy.actualBillingDescription}
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {(model.referenced_models || []).map((item) => (
+                      <ReferencedModelPricing key={item.model_name} model={item} copy={copy} />
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section className="space-y-3">
                 <div className="text-sm font-medium">{detailCopy(copy).channelPricing}</div>
@@ -310,6 +335,33 @@ function Provider({ providerName, iconURL }: { providerName: string; iconURL: st
     <div className="mt-2 inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs text-muted-foreground">
       {iconURL && <img src={iconURL} alt="" className="h-4 w-4 rounded object-contain" />}
       <span>{providerName || "-"}</span>
+    </div>
+  )
+}
+
+function MetaModelBadge({ copy, mode }: { copy: typeof zhCopy; mode?: string }) {
+  return (
+    <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs text-primary">
+      <span>{copy.metaModel}</span>
+      <span>{mode === "meta" ? copy.billingMeta : copy.billingActual}</span>
+    </div>
+  )
+}
+
+function ReferencedModelPricing({ model, copy }: { model: PublicModel; copy: typeof zhCopy }) {
+  return (
+    <div className="rounded-md border p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="break-all font-mono text-sm font-medium">{model.model_name}</div>
+          <Provider providerName={model.provider_name} iconURL={model.provider_icon_url} />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-sm sm:min-w-80">
+          <PriceBox label={copy.inputPrice} value={model.input_price} tiers={model.input_price_tiers} showTiers />
+          <PriceBox label={copy.outputPrice} value={model.output_price} tiers={model.output_price_tiers} showTiers />
+          <PriceBox label={copy.cachedInputPrice} value={model.cached_input_price} tiers={model.cached_input_price_tiers} showTiers />
+        </div>
+      </div>
     </div>
   )
 }
@@ -440,8 +492,10 @@ function sortPrice(model: ModelView, kind: "input" | "output") {
 function searchableText(model: PublicModel) {
   return [
     model.model_name,
+    model.description || "",
     model.provider,
     model.provider_name,
+    ...(model.referenced_models || []).map((item) => item.model_name),
     ...model.user_channels.flatMap((channel) => [channel.name, channel.description]),
   ].join(" ").toLowerCase()
 }
@@ -532,6 +586,12 @@ const zhCopy = {
   effectiveInput: "计费输入价",
   effectiveOutput: "计费输出价",
   effectiveCachedInput: "缓存命中价",
+  metaModel: "元模型",
+  billingActual: "实际调用计费",
+  billingMeta: "独立计费",
+  referencedModels: "涉及模型及价格",
+  actualBillingDescription: "按实际调用的真实模型计费，不公开 DSL 内容。",
+  metaBillingDescription: "按元模型独立价格计费，下方仅展示可能涉及的真实模型。",
 }
 
 const enCopy: typeof zhCopy = {
@@ -558,4 +618,10 @@ const enCopy: typeof zhCopy = {
   effectiveInput: "Effective input",
   effectiveOutput: "Effective output",
   effectiveCachedInput: "Cached input",
+  metaModel: "Meta model",
+  billingActual: "Actual billing",
+  billingMeta: "Meta billing",
+  referencedModels: "Referenced models and pricing",
+  actualBillingDescription: "Billed by the actual called model. DSL content is not exposed.",
+  metaBillingDescription: "Billed by the meta model price. Referenced real models are shown for visibility.",
 }
