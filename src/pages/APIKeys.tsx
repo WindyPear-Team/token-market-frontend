@@ -88,6 +88,7 @@ export default function APIKeys() {
       return Array.isArray(res.data) ? res.data.map(normalizeAPIKey) : []
     },
   })
+  const normalizedAPIKeys = Array.isArray(apiKeys) ? apiKeys.map(normalizeAPIKey) : []
 
   const createAPIKey = useMutation<CreateAPIKeyResponse>({
     mutationFn: async () => {
@@ -191,10 +192,10 @@ export default function APIKeys() {
           <CardTitle>{t("settings.apiKeys")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {apiKeys.length === 0 ? (
+          {normalizedAPIKeys.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">{t("settings.noKeys")}</div>
           ) : (
-            apiKeys.map((apiKey) => (
+            normalizedAPIKeys.map((apiKey) => (
               <APIKeyRow
                 key={apiKey.id}
                 apiKey={apiKey}
