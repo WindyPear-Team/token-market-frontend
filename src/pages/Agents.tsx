@@ -33,6 +33,7 @@ export default function Agents() {
   const [prompt, setPrompt] = useState("")
   const [defaultModel, setDefaultModel] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createName, setCreateName] = useState("")
   const [createPrompt, setCreatePrompt] = useState("")
@@ -77,11 +78,16 @@ export default function Agents() {
     setIsCreateOpen(true)
   }
 
-  const startEdit = (agent: ChatAgent) => {
+  const setEditForm = (agent: ChatAgent) => {
     setActiveAgentID(agent.id)
     setName(agent.name)
     setPrompt(agent.prompt)
     setDefaultModel(agent.default_model)
+  }
+
+  const openEditDialog = (agent: ChatAgent) => {
+    setEditForm(agent)
+    setIsEditOpen(true)
   }
 
   const clearEdit = () => {
@@ -89,6 +95,7 @@ export default function Agents() {
     setName("")
     setPrompt("")
     setDefaultModel(modelOptions[0] || "")
+    setIsEditOpen(false)
   }
 
   const createAgent = async () => {
@@ -113,7 +120,7 @@ export default function Agents() {
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
       if (savedAgent) {
-        startEdit(savedAgent)
+        setEditForm(savedAgent)
       }
       setIsCreateOpen(false)
       success("智能体已创建")
@@ -150,8 +157,9 @@ export default function Agents() {
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
       if (savedAgent) {
-        startEdit(savedAgent)
+        setEditForm(savedAgent)
       }
+      setIsEditOpen(false)
       success("智能体已保存")
     } catch (err) {
       error(apiErrorMessage(err, "保存智能体失败"))
@@ -189,101 +197,96 @@ export default function Agents() {
         </Button>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>智能体列表</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {agents.length === 0 ? (
-              <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">暂无智能体</div>
-            ) : (
-              agents.map((agent) => (
-                <div
-                  key={agent.id}
-                  className={cn(
-                    "grid grid-cols-[1fr_auto] items-start gap-2 rounded-md border p-3",
-                    agent.id === activeAgent?.id && "border-primary bg-primary/5"
-                  )}
+      <Card>
+        <CardHeader>
+          <CardTitle>智能体列表</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {agents.length === 0 ? (
+            <div className="rounded-md border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">暂无智能体</div>
+          ) : (
+            agents.map((agent) => (
+              <div
+                key={agent.id}
+                className={cn(
+                  "grid grid-cols-[1fr_auto] items-start gap-2 rounded-md border p-3 transition-colors hover:bg-muted/50",
+                  agent.id === activeAgent?.id && "border-primary bg-primary/5 hover:bg-primary/5"
+                )}
+              >
+                <button type="button" className="min-w-0 w-full text-left" onClick={() => openEditDialog(agent)}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-sm font-medium">{agent.name}</span>
+                  </div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model}</div>
+                </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={deletingAgentID === agent.id}
+                  onClick={() => deleteAgent(agent)}
+                  title="删除智能体"
                 >
-                  <button type="button" className="min-w-0 text-left" onClick={() => startEdit(agent)}>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-sm font-medium">{agent.name}</span>
-                    </div>
-                    <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model}</div>
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={deletingAgentID === agent.id}
-                    onClick={() => deleteAgent(agent)}
-                    title="删除智能体"
-                  >
-                    <Trash2 size={15} />
-                  </Button>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{activeAgent ? "编辑智能体" : "智能体详情"}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {activeAgent ? (
-              <>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1 text-sm">
-                    <span className="font-medium">名称</span>
-                    <input
-                      className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                    />
-                  </label>
-                  <label className="space-y-1 text-sm">
-                    <span className="font-medium">默认模型</span>
-                    <select
-                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                      value={defaultModel}
-                      onChange={(event) => setDefaultModel(event.target.value)}
-                    >
-                      <option value="">选择模型</option>
-                      {modelOptions.map((model) => (
-                        <option key={model} value={model}>
-                          {model}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium">提示词</span>
-                  <textarea
-                    className="min-h-72 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    value={prompt}
-                    placeholder="输入这个智能体的系统提示词"
-                    onChange={(event) => setPrompt(event.target.value)}
-                  />
-                </label>
-                <div className="flex justify-end">
-                  <Button className="gap-2" disabled={isSaving} onClick={saveAgent}>
-                    <Save size={16} />
-                    {isSaving ? "保存中" : "保存"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="rounded-md border border-dashed px-4 py-16 text-center text-sm text-muted-foreground">
-                选择左侧智能体进行编辑，或点击新建智能体。
+                  <Trash2 size={15} />
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>编辑智能体</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">名称</span>
+                <input
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">默认模型</span>
+                <select
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  value={defaultModel}
+                  onChange={(event) => setDefaultModel(event.target.value)}
+                >
+                  <option value="">选择模型</option>
+                  {modelOptions.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="space-y-1 text-sm">
+              <span className="font-medium">提示词</span>
+              <textarea
+                className="min-h-72 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                value={prompt}
+                placeholder="输入这个智能体的系统提示词"
+                onChange={(event) => setPrompt(event.target.value)}
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsEditOpen(false)}>
+              取消
+            </Button>
+            <Button className="gap-2" disabled={isSaving} onClick={saveAgent}>
+              <Save size={16} />
+              {isSaving ? "保存中" : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-2xl">

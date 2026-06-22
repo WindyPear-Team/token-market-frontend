@@ -17,7 +17,7 @@ export default function Login() {
   const { language, t } = useI18n()
   const { success, error } = useToast()
   const copy = language === "zh" ? zhCopy : enCopy
-  const { data: settings } = useQuery<PublicSettings>({
+  const { data: settings, isLoading: isSettingsLoading } = useQuery<PublicSettings>({
     queryKey: ["public-settings"],
     queryFn: async () => {
       const res = await api.get("/public/settings")
@@ -146,10 +146,20 @@ export default function Login() {
     window.location.href = getAuthLoginURL(new URLSearchParams(window.location.search).get("ref"))
   }
 
+  const passwordAuthEnabled = publicSettings.password_login_enabled || publicSettings.password_registration_enabled
+  const oidcOnly = publicSettings.oidc_enabled && !passwordAuthEnabled && !publicSettings.passkey_enabled
   const canSubmit = mode === "login"
     ? Boolean(identifier.trim() && password)
     : Boolean(username.trim() && email.trim() && password && (!publicSettings.email_verification_required || emailCode.trim()))
-  const noLoginMethod = !publicSettings.password_login_enabled && !publicSettings.password_registration_enabled && !publicSettings.oidc_enabled && !publicSettings.passkey_enabled
+  const noLoginMethod = !passwordAuthEnabled && !publicSettings.oidc_enabled && !publicSettings.passkey_enabled
+
+  if (isSettingsLoading && !settings) {
+    return (
+      <div className="flex min-h-screen w-screen items-center justify-center bg-muted/50 p-4 text-sm text-muted-foreground">
+        {t("common.loading")}
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen w-screen items-center justify-center bg-muted/50 p-4">
@@ -168,7 +178,7 @@ export default function Login() {
             <div className="rounded-md border p-4 text-center text-sm text-muted-foreground">{copy.noLoginMethod}</div>
           ) : (
             <>
-              {(publicSettings.password_login_enabled || publicSettings.password_registration_enabled) && (
+              {passwordAuthEnabled && (
                 <div className="flex rounded-md border p-1">
                   {publicSettings.password_login_enabled && (
                     <Button variant={mode === "login" ? "default" : "ghost"} className="flex-1" onClick={() => setMode("login")}>
@@ -206,15 +216,15 @@ export default function Login() {
                 </div>
               )}
 
-              {publicSettings.passkey_enabled && !publicSettings.password_login_enabled && (
+              {publicSettings.passkey_enabled && !publicSettings.password_login_enabled && !oidcOnly && (
                 <Input value={identifier} placeholder={copy.passkeyIdentifierPlaceholder} onChange={(event) => setIdentifier(event.target.value)} />
               )}
 
-              {publicSettings.password_hcaptcha_enabled && publicSettings.hcaptcha_site_key && (
+              {passwordAuthEnabled && publicSettings.password_hcaptcha_enabled && publicSettings.hcaptcha_site_key && (
                 <HCaptcha siteKey={publicSettings.hcaptcha_site_key} onToken={setCaptchaToken} />
               )}
 
-              {(publicSettings.password_login_enabled || publicSettings.password_registration_enabled) && (
+              {passwordAuthEnabled && (
                 <Button className="w-full" disabled={!canSubmit || submitPassword.isPending} onClick={() => submitPassword.mutate()}>
                   {mode === "login" ? copy.login : copy.register}
                 </Button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { Bot, Check, MessageSquarePlus, Pencil, Send, Settings, Trash2, User, X } from "lucide-react"
+import { Bot, Check, MessageSquarePlus, Paperclip, Pencil, Plus, Send, Server, Settings, Sparkles, Trash2, User, X } from "lucide-react"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
@@ -38,6 +38,8 @@ interface ChatSession {
   title: string
   messages: ChatMessage[]
   agent_id?: string
+  skill_ids: string[]
+  mcp_server_ids: string[]
   model_name?: string
   created_at: string
   updated_at: string
@@ -52,8 +54,43 @@ interface ChatAgent {
   updated_at: string
 }
 
+interface ChatSkill {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  mcp_server_ids: string[]
+  created_at: string
+  updated_at: string
+}
+
+interface MCPServer {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  request_mode: "backend" | "frontend" | string
+}
+
+interface AdvancedChatSettings {
+  attachment_max_mb: number
+  attachment_allowed_types: string[]
+  mcp_servers: MCPServer[]
+  builtin_mcp_servers: MCPServer[]
+  custom_mcp_servers: MCPServer[]
+}
+
+interface ChatAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  text?: string
+}
+
 type ChatEndpoint = "chat" | "responses" | "claude" | "gemini"
 type ChatMode = "basic" | "advanced"
+type SessionConfigTab = "basic" | "agent" | "skills" | "mcp"
 
 interface ChatProps {
   variant?: ChatMode
@@ -75,6 +112,14 @@ const endpointStoreKey = "windypear.chat.endpoint.v1"
 const apiKeyStoreKey = "windypear.chat.api_key_id.v1"
 const selectedAgentStoreKey = "windypear.advanced_chat.selected_agent.v1"
 const agentsQueryKey = ["advanced-chat-agents"] as const
+const skillsQueryKey = ["advanced-chat-skills"] as const
+const defaultAdvancedChatSettings: AdvancedChatSettings = {
+  attachment_max_mb: 10,
+  attachment_allowed_types: ["text/plain", "text/markdown", "application/json", "text/csv", "image/png", "image/jpeg", "application/pdf"],
+  mcp_servers: [],
+  builtin_mcp_servers: [],
+  custom_mcp_servers: [],
+}
 
 const chatStoreKeys: Record<ChatMode, ChatStoreKeys> = {
   basic: {
@@ -106,7 +151,12 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const [selectedAPIKeyID, setSelectedAPIKeyID] = useState(() => Number(localStorage.getItem(storeKeys.apiKey) || 0))
   const [selectedAgentID, setSelectedAgentID] = useState(() => (isAdvanced ? localStorage.getItem(selectedAgentStoreKey) || "" : ""))
   const [isConfigOpen, setIsConfigOpen] = useState(false)
+  const [configTab, setConfigTab] = useState<SessionConfigTab>("basic")
+  const [pendingAgentID, setPendingAgentID] = useState("")
+  const [pendingSkillID, setPendingSkillID] = useState("")
+  const [pendingMCPServerID, setPendingMCPServerID] = useState("")
   const [prompt, setPrompt] = useState("")
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [isSending, setIsSending] = useState(false)
   const [editingMessageID, setEditingMessageID] = useState("")
   const [editingContent, setEditingContent] = useState("")
@@ -138,6 +188,26 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     },
   })
 
+  const { data: skills = [] } = useQuery<ChatSkill[]>({
+    queryKey: skillsQueryKey,
+    enabled: isAdvanced,
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/skills")
+      return Array.isArray(res.data)
+        ? res.data.map(normalizeSkill).filter((skill): skill is ChatSkill => Boolean(skill))
+        : []
+    },
+  })
+
+  const { data: advancedSettings } = useQuery<AdvancedChatSettings>({
+    queryKey: ["advanced-chat-user-settings"],
+    enabled: isAdvanced,
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/settings")
+      return normalizeAdvancedChatSettings(res.data)
+    },
+  })
+
   const modelOptions = useMemo(() => uniqueModels(catalog), [catalog])
   const selectableAPIKeys = useMemo(() => apiKeys.filter((key) => key.enabled && key.api_key), [apiKeys])
   const selectedAPIKey = useMemo(
@@ -152,10 +222,46 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!isAdvanced) {
       return undefined
     }
-    const sessionAgentID = activeSession?.agent_id || selectedAgentID
-    return agents.find((agent) => agent.id === sessionAgentID) || agents.find((agent) => agent.id === selectedAgentID) || agents[0]
-  }, [activeSession?.agent_id, agents, isAdvanced, selectedAgentID])
+    return agents.find((agent) => agent.id === activeSession?.agent_id)
+  }, [activeSession?.agent_id, agents, isAdvanced])
   const activeModelName = isAdvanced ? activeSession?.model_name || selectedAgent?.default_model || modelName : modelName
+  const currentAdvancedSettings = useMemo<AdvancedChatSettings>(
+    () => ({ ...defaultAdvancedChatSettings, ...(advancedSettings ?? {}) }),
+    [advancedSettings]
+  )
+  const mcpServers = useMemo(() => {
+    if (currentAdvancedSettings.mcp_servers.length > 0) {
+      return currentAdvancedSettings.mcp_servers
+    }
+    return mergeMCPServers(currentAdvancedSettings.builtin_mcp_servers, currentAdvancedSettings.custom_mcp_servers)
+  }, [currentAdvancedSettings])
+  const enabledMCPServers = useMemo(() => mcpServers.filter((server) => server.enabled), [mcpServers])
+  const selectedSkills = useMemo(() => {
+    const selectedIDs = activeSession?.skill_ids || []
+    return skills.filter((skill) => selectedIDs.includes(skill.id))
+  }, [activeSession?.skill_ids, skills])
+  const availableSkillsToAdd = useMemo(() => {
+    const selectedIDs = new Set(activeSession?.skill_ids || [])
+    return skills.filter((skill) => !selectedIDs.has(skill.id))
+  }, [activeSession?.skill_ids, skills])
+  const skillMCPServerIDs = useMemo(() => uniqueStrings(selectedSkills.flatMap((skill) => skill.mcp_server_ids)), [selectedSkills])
+  const activeMCPServerIDs = useMemo(
+    () => uniqueStrings([...(activeSession?.mcp_server_ids || []), ...skillMCPServerIDs]),
+    [activeSession?.mcp_server_ids, skillMCPServerIDs]
+  )
+  const activeMCPServers = useMemo(() => {
+    const selectedIDs = new Set(activeMCPServerIDs)
+    return enabledMCPServers.filter((server) => selectedIDs.has(server.id))
+  }, [activeMCPServerIDs, enabledMCPServers])
+  const sessionMCPServers = useMemo(() => {
+    const selectedIDs = new Set(activeSession?.mcp_server_ids || [])
+    return enabledMCPServers.filter((server) => selectedIDs.has(server.id))
+  }, [activeSession?.mcp_server_ids, enabledMCPServers])
+  const availableMCPServersToAdd = useMemo(() => {
+    const selectedIDs = new Set(activeSession?.mcp_server_ids || [])
+    const skillSelectedIDs = new Set(skillMCPServerIDs)
+    return enabledMCPServers.filter((server) => !selectedIDs.has(server.id) && !skillSelectedIDs.has(server.id))
+  }, [activeSession?.mcp_server_ids, enabledMCPServers, skillMCPServerIDs])
 
   useEffect(() => {
     localStorage.setItem(storeKeys.sessions, JSON.stringify(sessions))
@@ -217,10 +323,6 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       localStorage.setItem(selectedAgentStoreKey, selectedAgentID)
       return
     }
-    if (agents[0]) {
-      setSelectedAgentID(agents[0].id)
-      return
-    }
     setSelectedAgentID("")
     localStorage.removeItem(selectedAgentStoreKey)
   }, [agents, isAdvanced, selectedAgentID])
@@ -234,20 +336,39 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [activeSession, isAdvanced, modelOptions, selectedAgent?.default_model])
 
   useEffect(() => {
-    if (!isAdvanced || !activeSession || activeSession.agent_id || !selectedAgent) {
+    if (!pendingAgentID && agents[0]) {
+      setPendingAgentID(agents[0].id)
+    }
+  }, [agents, pendingAgentID])
+
+  useEffect(() => {
+    if (!pendingSkillID && availableSkillsToAdd[0]) {
+      setPendingSkillID(availableSkillsToAdd[0].id)
       return
     }
-    updateSession(activeSession.id, (session) => ({ ...session, agent_id: selectedAgent.id }))
-  }, [activeSession, isAdvanced, selectedAgent])
+    if (pendingSkillID && !availableSkillsToAdd.some((skill) => skill.id === pendingSkillID)) {
+      setPendingSkillID(availableSkillsToAdd[0]?.id || "")
+    }
+  }, [availableSkillsToAdd, pendingSkillID])
+
+  useEffect(() => {
+    if (!pendingMCPServerID && availableMCPServersToAdd[0]) {
+      setPendingMCPServerID(availableMCPServersToAdd[0].id)
+      return
+    }
+    if (pendingMCPServerID && !availableMCPServersToAdd.some((server) => server.id === pendingMCPServerID)) {
+      setPendingMCPServerID(availableMCPServersToAdd[0]?.id || "")
+    }
+  }, [availableMCPServersToAdd, pendingMCPServerID])
 
   const createNewSession = () => {
     const session = createSession({
-      agentID: isAdvanced ? selectedAgent?.id || selectedAgentID : undefined,
-      modelName: isAdvanced ? selectedAgent?.default_model || modelOptions[0] || modelName : undefined,
+      modelName: isAdvanced ? modelOptions[0] || modelName : undefined,
     })
     setSessions((current) => [session, ...current])
     setActiveSessionID(session.id)
     setPrompt("")
+    setAttachments([])
     cancelEdit()
   }
 
@@ -272,7 +393,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     )
   }
 
-  const handleAgentSelection = (agentID: string) => {
+  const setSessionAgent = (agentID: string) => {
     setSelectedAgentID(agentID)
     const agent = agents.find((item) => item.id === agentID)
     if (!activeSession) {
@@ -285,12 +406,68 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     }))
   }
 
+  const removeAgentFromSession = () => {
+    if (!activeSession) {
+      return
+    }
+    updateSession(activeSession.id, (session) => ({
+      ...session,
+      agent_id: undefined,
+    }))
+  }
+
   const handleSessionModelChange = (value: string) => {
     if (isAdvanced && activeSession) {
       updateSession(activeSession.id, (session) => ({ ...session, model_name: value }))
       return
     }
     setModelName(value)
+  }
+
+  const addSessionSkill = (skillID: string) => {
+    if (!activeSession) {
+      return
+    }
+    if (activeSession.skill_ids.includes(skillID)) {
+      return
+    }
+    updateSession(activeSession.id, (session) => ({
+      ...session,
+      skill_ids: [...session.skill_ids, skillID],
+    }))
+  }
+
+  const removeSessionSkill = (skillID: string) => {
+    if (!activeSession) {
+      return
+    }
+    updateSession(activeSession.id, (session) => ({
+      ...session,
+      skill_ids: session.skill_ids.filter((id) => id !== skillID),
+    }))
+  }
+
+  const addSessionMCPServer = (serverID: string) => {
+    if (!activeSession) {
+      return
+    }
+    if (activeSession.mcp_server_ids.includes(serverID)) {
+      return
+    }
+    updateSession(activeSession.id, (session) => ({
+      ...session,
+      mcp_server_ids: [...session.mcp_server_ids, serverID],
+    }))
+  }
+
+  const removeSessionMCPServer = (serverID: string) => {
+    if (!activeSession) {
+      return
+    }
+    updateSession(activeSession.id, (session) => ({
+      ...session,
+      mcp_server_ids: session.mcp_server_ids.filter((id) => id !== serverID),
+    }))
   }
 
   const sendMessage = async () => {
@@ -309,20 +486,23 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       error(copy.modelRequired)
       return
     }
-    if (!content) {
+    if (!content && attachments.length === 0) {
       return
     }
 
-    const userMessage = createMessage("user", content)
+    const messageContent = messageContentWithAttachments(content, attachments)
+    const userMessage = createMessage("user", messageContent)
     const nextMessages = [...session.messages, userMessage]
-    const nextTitle = session.title || titleFromMessage(content, copy)
+    const nextTitle = session.title || titleFromMessage(content || attachments[0]?.name || copy.attachmentMessageTitle, copy)
     updateSession(session.id, (current) => ({ ...current, title: nextTitle, messages: nextMessages, model_name: resolvedModel }))
     setPrompt("")
+    setAttachments([])
     setIsSending(true)
     cancelEdit()
 
     try {
-      const request = chatRequest(endpointMode, resolvedModel, rawKey, nextMessages, selectedAgent?.prompt || "")
+      const systemPrompt = buildAdvancedSystemPrompt(selectedAgent, selectedSkills, activeMCPServers)
+      const request = chatRequest(endpointMode, resolvedModel, rawKey, nextMessages, systemPrompt)
       const response = await fetch(request.url, {
         method: "POST",
         headers: request.headers,
@@ -378,6 +558,28 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (editingMessageID === messageID) {
       cancelEdit()
     }
+  }
+
+  const handleAttachmentFiles = async (files: FileList | null) => {
+    if (!isAdvanced || !files?.length) {
+      return
+    }
+    const next: ChatAttachment[] = []
+    for (const file of Array.from(files)) {
+      const validationError = validateAttachment(file, currentAdvancedSettings)
+      if (validationError) {
+        error(validationError)
+        continue
+      }
+      next.push(await attachmentFromFile(file))
+    }
+    if (next.length > 0) {
+      setAttachments((current) => [...current, ...next].slice(0, 8))
+    }
+  }
+
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => current.filter((attachment) => attachment.id !== id))
   }
 
   function cancelEdit() {
@@ -542,20 +744,59 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                 )}
               </div>
 
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex max-w-full items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                      <Paperclip size={14} className="shrink-0" />
+                      <span className="truncate">{attachment.name}</span>
+                      <span className="shrink-0 text-muted-foreground">{formatBytes(attachment.size)}</span>
+                      <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => removeAttachment(attachment.id)} aria-label={copy.removeAttachment}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-                <textarea
-                  className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  value={prompt}
-                  placeholder={copy.promptPlaceholder}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  onKeyDown={(event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-                      event.preventDefault()
-                      sendMessage()
-                    }
-                  }}
-                />
-                <Button className="gap-2 self-end" disabled={!prompt.trim() || isSending} onClick={sendMessage}>
+                <div className="space-y-2">
+                  <textarea
+                    className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    value={prompt}
+                    placeholder={copy.promptPlaceholder}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={(event) => {
+                      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                        event.preventDefault()
+                        sendMessage()
+                      }
+                    }}
+                  />
+                  {isAdvanced && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        <Paperclip size={15} />
+                        {copy.addAttachment}
+                        <input
+                          className="sr-only"
+                          type="file"
+                          multiple
+                          onChange={(event) => {
+                            handleAttachmentFiles(event.target.files)
+                            event.target.value = ""
+                          }}
+                        />
+                      </label>
+                      <span>
+                        {copy.attachmentLimit
+                          .replace("{size}", String(currentAdvancedSettings.attachment_max_mb))
+                          .replace("{types}", currentAdvancedSettings.attachment_allowed_types.join(", "))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <Button className="gap-2 self-end" disabled={(!prompt.trim() && attachments.length === 0) || isSending} onClick={sendMessage}>
                   <Send size={16} />
                   {isSending ? copy.sending : copy.send}
                 </Button>
@@ -572,81 +813,229 @@ export default function Chat({ variant = "basic" }: ChatProps) {
               <DialogTitle>{copy.advancedConfig}</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-5">
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium">{copy.apiKey}</span>
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    value={selectedAPIKey?.id || ""}
-                    onChange={(event) => setSelectedAPIKeyID(Number(event.target.value) || 0)}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {([
+                  ["basic", copy.basicSettings],
+                  ["agent", copy.agent],
+                  ["skills", copy.skills],
+                  ["mcp", copy.mcpServers],
+                ] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setConfigTab(tab)}
+                    className={cn(
+                      "h-9 rounded-md border px-3 text-sm transition-colors hover:bg-muted",
+                      configTab === tab && "border-primary bg-primary/5 text-primary"
+                    )}
                   >
-                    <option value="">{selectableAPIKeys.length ? copy.selectKey : copy.noKeys}</option>
-                    {selectableAPIKeys.map((key) => (
-                      <option key={key.id} value={key.id}>
-                        {key.name || key.key_prefix}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1 text-sm">
-                  <span className="font-medium">{copy.endpoint}</span>
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    value={endpointMode}
-                    onChange={(event) => setEndpointMode(normalizeEndpoint(event.target.value))}
-                  >
-                    <option value="chat">{copy.chatCompletions}</option>
-                    <option value="responses">{copy.responsesAPI}</option>
-                    <option value="claude">{copy.claudeMessages}</option>
-                    <option value="gemini">{copy.geminiGenerate}</option>
-                  </select>
-                </label>
+                    {label}
+                  </button>
+                ))}
               </div>
 
-              <div className="space-y-3 rounded-md border p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm font-medium">{copy.agent}</div>
-                  <Button asChild variant="outline" size="sm">
-                    <Link to="/chat/agents">{copy.manageAgents}</Link>
-                  </Button>
-                </div>
-                <div className="grid gap-2">
-                  <select
-                    className="h-10 rounded-md border bg-background px-3 text-sm"
-                    value={selectedAgent?.id || ""}
-                    onChange={(event) => handleAgentSelection(event.target.value)}
-                  >
-                    <option value="">{agents.length ? copy.selectAgent : copy.noAgents}</option>
-                    {agents.map((agent) => (
-                      <option key={agent.id} value={agent.id}>
-                        {agent.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {selectedAgent?.prompt && (
-                  <div className="line-clamp-3 whitespace-pre-wrap rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    {selectedAgent.prompt}
+              {configTab === "basic" && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{copy.apiKey}</span>
+                      <select
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={selectedAPIKey?.id || ""}
+                        onChange={(event) => setSelectedAPIKeyID(Number(event.target.value) || 0)}
+                      >
+                        <option value="">{selectableAPIKeys.length ? copy.selectKey : copy.noKeys}</option>
+                        {selectableAPIKeys.map((key) => (
+                          <option key={key.id} value={key.id}>
+                            {key.name || key.key_prefix}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{copy.endpoint}</span>
+                      <select
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={endpointMode}
+                        onChange={(event) => setEndpointMode(normalizeEndpoint(event.target.value))}
+                      >
+                        <option value="chat">{copy.chatCompletions}</option>
+                        <option value="responses">{copy.responsesAPI}</option>
+                        <option value="claude">{copy.claudeMessages}</option>
+                        <option value="gemini">{copy.geminiGenerate}</option>
+                      </select>
+                    </label>
                   </div>
-                )}
-              </div>
 
-              <label className="space-y-1 text-sm">
-                <span className="font-medium">{copy.sessionModel}</span>
-                <select
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                  value={activeModelName}
-                  onChange={(event) => handleSessionModelChange(event.target.value)}
-                >
-                  <option value="">{copy.selectModel}</option>
-                  {modelOptions.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-medium">{copy.sessionModel}</span>
+                    <select
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={activeModelName}
+                      onChange={(event) => handleSessionModelChange(event.target.value)}
+                    >
+                      <option value="">{copy.selectModel}</option>
+                      {modelOptions.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {configTab === "agent" && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-sm font-medium">{copy.addedAgent}</div>
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/chat/agents">{copy.manageAgents}</Link>
+                    </Button>
+                  </div>
+                  {selectedAgent ? (
+                    <div className="grid grid-cols-[1fr_auto] gap-2 rounded-md border p-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{selectedAgent.name}</div>
+                        {selectedAgent.prompt && <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">{selectedAgent.prompt}</div>}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={removeAgentFromSession} title={copy.remove}>
+                        <X size={15} />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">{copy.noAgentAdded}</div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                      value={pendingAgentID}
+                      onChange={(event) => setPendingAgentID(event.target.value)}
+                    >
+                      <option value="">{agents.length ? copy.selectAgent : copy.noAgents}</option>
+                      {agents.map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button className="gap-2" disabled={!pendingAgentID} onClick={() => setSessionAgent(pendingAgentID)}>
+                      <Check size={16} />
+                      {selectedAgent ? copy.replaceAgent : copy.setAgent}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {configTab === "skills" && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Sparkles size={15} />
+                      {copy.addedSkills}
+                    </div>
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/chat/skills">{copy.manageSkills}</Link>
+                    </Button>
+                  </div>
+                  {selectedSkills.length === 0 ? (
+                    <div className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">{copy.noSkillsAdded}</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedSkills.map((skill) => (
+                        <div key={skill.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-md border p-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{skill.name}</div>
+                            {skill.description && <div className="mt-1 truncate text-xs text-muted-foreground">{skill.description}</div>}
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => removeSessionSkill(skill.id)} title={copy.remove}>
+                            <X size={15} />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                      value={pendingSkillID}
+                      onChange={(event) => setPendingSkillID(event.target.value)}
+                    >
+                      <option value="">{availableSkillsToAdd.length ? copy.selectSkills : copy.noSkills}</option>
+                      {availableSkillsToAdd.map((skill) => (
+                        <option key={skill.id} value={skill.id}>
+                          {skill.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button className="gap-2" disabled={!pendingSkillID} onClick={() => addSessionSkill(pendingSkillID)}>
+                      <Plus size={16} />
+                      {copy.add}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {configTab === "mcp" && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Server size={15} />
+                      {copy.addedMCPServers}
+                    </div>
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/chat/mcp">{copy.manageMCP}</Link>
+                    </Button>
+                  </div>
+                  {sessionMCPServers.length === 0 && skillMCPServerIDs.length === 0 ? (
+                    <div className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">{copy.noMCPServersAdded}</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {sessionMCPServers.map((server) => (
+                        <div key={server.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-md border p-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{server.name}</div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">{server.url}</div>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => removeSessionMCPServer(server.id)} title={copy.remove}>
+                            <X size={15} />
+                          </Button>
+                        </div>
+                      ))}
+                      {enabledMCPServers
+                        .filter((server) => skillMCPServerIDs.includes(server.id) && !activeSession?.mcp_server_ids.includes(server.id))
+                        .map((server) => (
+                          <div key={`skill-${server.id}`} className="rounded-md border bg-muted/40 p-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-sm font-medium">{server.name}</span>
+                              <span className="shrink-0 rounded-md bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground">{copy.fromSkill}</span>
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">{server.url}</div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                      value={pendingMCPServerID}
+                      onChange={(event) => setPendingMCPServerID(event.target.value)}
+                    >
+                      <option value="">{availableMCPServersToAdd.length ? copy.selectMCPServer : copy.noMCPServers}</option>
+                      {availableMCPServersToAdd.map((server) => (
+                        <option key={server.id} value={server.id}>
+                          {server.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button className="gap-2" disabled={!pendingMCPServerID} onClick={() => addSessionMCPServer(pendingMCPServerID)}>
+                      <Plus size={16} />
+                      {copy.add}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter>
@@ -673,7 +1062,7 @@ function readStoredSessions(storeKey = sessionsStoreKey, includeLegacy = true): 
   const legacyMessages = includeLegacy ? readLegacyMessages() : []
   if (legacyMessages.length > 0) {
     const now = new Date().toISOString()
-    return [{ id: createID(), title: "", messages: legacyMessages, created_at: now, updated_at: now }]
+    return [{ id: createID(), title: "", messages: legacyMessages, skill_ids: [], mcp_server_ids: [], created_at: now, updated_at: now }]
   }
   return [createSession()]
 }
@@ -763,6 +1152,23 @@ function chatRequestPayload(endpoint: ChatEndpoint, modelName: string, messages:
   }
 }
 
+function buildAdvancedSystemPrompt(agent: ChatAgent | undefined, skills: ChatSkill[], mcpServers: MCPServer[]) {
+  const sections: string[] = []
+  if (agent?.prompt.trim()) {
+    sections.push(agent.prompt.trim())
+  }
+  for (const skill of skills) {
+    if (skill.prompt.trim()) {
+      sections.push(`[Skill: ${skill.name}]\n${skill.prompt.trim()}`)
+    }
+  }
+  if (mcpServers.length > 0) {
+    const serverLines = mcpServers.map((server) => `- ${server.name}: ${server.url} (${server.request_mode})`)
+    sections.push(["Available MCP servers for this session:", ...serverLines].join("\n"))
+  }
+  return sections.join("\n\n")
+}
+
 function responseTextFromPayload(payload: any): string {
   const chatText = payload?.choices?.[0]?.message?.content || payload?.choices?.[0]?.text
   if (typeof chatText === "string") {
@@ -823,6 +1229,100 @@ function responseTextFromPayload(payload: any): string {
   return texts.join("\n").trim()
 }
 
+function normalizeAdvancedChatSettings(value: unknown): AdvancedChatSettings {
+  const item = isRecord(value) ? value : {}
+  const builtin = Array.isArray(item.builtin_mcp_servers) ? item.builtin_mcp_servers.map(normalizeMCPServer) : []
+  const custom = Array.isArray(item.custom_mcp_servers) ? item.custom_mcp_servers.map(normalizeMCPServer) : []
+  return {
+    attachment_max_mb: Number(item.attachment_max_mb || defaultAdvancedChatSettings.attachment_max_mb),
+    attachment_allowed_types: Array.isArray(item.attachment_allowed_types)
+      ? item.attachment_allowed_types.filter((value): value is string => typeof value === "string")
+      : defaultAdvancedChatSettings.attachment_allowed_types,
+    mcp_servers: Array.isArray(item.mcp_servers) ? item.mcp_servers.map(normalizeMCPServer) : mergeMCPServers(builtin, custom),
+    builtin_mcp_servers: builtin,
+    custom_mcp_servers: custom,
+  }
+}
+
+function normalizeMCPServer(value: unknown): MCPServer {
+  const item = isRecord(value) ? value : {}
+  return {
+    id: typeof item.id === "string" && item.id ? item.id : createID(),
+    name: typeof item.name === "string" ? item.name : "",
+    url: typeof item.url === "string" ? item.url : "",
+    enabled: item.enabled !== false,
+    request_mode: typeof item.request_mode === "string" ? item.request_mode : "frontend",
+  }
+}
+
+function validateAttachment(file: File, settings: AdvancedChatSettings) {
+  const maxBytes = Math.max(1, Number(settings.attachment_max_mb) || 1) * 1024 * 1024
+  if (file.size > maxBytes) {
+    return `附件 ${file.name} 超过 ${settings.attachment_max_mb} MB`
+  }
+  const type = (file.type || "application/octet-stream").toLowerCase()
+  if (!mimeAllowed(type, settings.attachment_allowed_types)) {
+    return `附件 ${file.name} 类型不允许：${type}`
+  }
+  return ""
+}
+
+function mimeAllowed(type: string, allowedTypes: string[]) {
+  return allowedTypes.some((allowed) => {
+    const item = allowed.toLowerCase().trim()
+    if (item === "*/*" || item === type) {
+      return true
+    }
+    if (item.endsWith("/*")) {
+      return type.startsWith(item.slice(0, -1))
+    }
+    return false
+  })
+}
+
+async function attachmentFromFile(file: File): Promise<ChatAttachment> {
+  const type = file.type || "application/octet-stream"
+  const attachment: ChatAttachment = {
+    id: createID(),
+    name: file.name,
+    type,
+    size: file.size,
+  }
+  if (isTextLikeFile(file)) {
+    attachment.text = await file.text()
+  }
+  return attachment
+}
+
+function isTextLikeFile(file: File) {
+  const type = file.type.toLowerCase()
+  return type.startsWith("text/") || type === "application/json" || type === "application/xml" || /\.(md|txt|json|csv|xml|yaml|yml)$/i.test(file.name)
+}
+
+function messageContentWithAttachments(content: string, attachments: ChatAttachment[]) {
+  if (attachments.length === 0) {
+    return content
+  }
+  const sections = attachments.map((attachment) => {
+    const header = `[Attachment: ${attachment.name}; type=${attachment.type}; size=${formatBytes(attachment.size)}]`
+    if (!attachment.text) {
+      return `${header}\n(binary content omitted)`
+    }
+    return `${header}\n${attachment.text.slice(0, 20000)}`
+  })
+  return [content, sections.join("\n\n")].filter(Boolean).join("\n\n")
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 function normalizeSession(value: unknown): ChatSession | null {
   if (!isRecord(value)) {
     return null
@@ -835,6 +1335,8 @@ function normalizeSession(value: unknown): ChatSession | null {
     title: typeof value.title === "string" ? value.title : "",
     messages,
     agent_id: stringFromUnknown(value.agent_id),
+    skill_ids: stringArrayFromUnknown(value.skill_ids),
+    mcp_server_ids: stringArrayFromUnknown(value.mcp_server_ids),
     model_name: stringFromUnknown(value.model_name),
     created_at: typeof value.created_at === "string" ? value.created_at : new Date().toISOString(),
     updated_at: typeof value.updated_at === "string" ? value.updated_at : new Date().toISOString(),
@@ -878,6 +1380,25 @@ function normalizeAgent(value: unknown): ChatAgent | null {
   }
 }
 
+function normalizeSkill(value: unknown): ChatSkill | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const id = stringFromUnknown(value.id)
+  if (!id) {
+    return null
+  }
+  return {
+    id,
+    name: typeof value.name === "string" ? value.name : "",
+    description: typeof value.description === "string" ? value.description : "",
+    prompt: typeof value.prompt === "string" ? value.prompt : "",
+    mcp_server_ids: stringArrayFromUnknown(value.mcp_server_ids),
+    created_at: typeof value.created_at === "string" ? value.created_at : new Date().toISOString(),
+    updated_at: typeof value.updated_at === "string" ? value.updated_at : new Date().toISOString(),
+  }
+}
+
 function createSession(input: { agentID?: string; modelName?: string } = {}): ChatSession {
   const now = new Date().toISOString()
   return {
@@ -885,6 +1406,8 @@ function createSession(input: { agentID?: string; modelName?: string } = {}): Ch
     title: "",
     messages: [],
     agent_id: input.agentID || undefined,
+    skill_ids: [],
+    mcp_server_ids: [],
     model_name: input.modelName || undefined,
     created_at: now,
     updated_at: now,
@@ -934,6 +1457,27 @@ function normalizeAPIKey(value: unknown): APIKey {
   }
 }
 
+function mergeMCPServers(...groups: MCPServer[][]) {
+  const servers: MCPServer[] = []
+  const seen = new Set<string>()
+  for (const server of groups.flat()) {
+    if (!server.id || seen.has(server.id)) {
+      continue
+    }
+    seen.add(server.id)
+    servers.push(server)
+  }
+  return servers
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
+function stringArrayFromUnknown(value: unknown) {
+  return Array.isArray(value) ? uniqueStrings(value.map(stringFromUnknown).filter((item): item is string => Boolean(item))) : []
+}
+
 function stringFromUnknown(value: unknown) {
   if (typeof value === "string") {
     return value
@@ -979,6 +1523,26 @@ const zhCopy = {
   agentDefaultModelRequired: "请选择智能体默认模型",
   agentSaveFailed: "保存智能体失败",
   agentDeleteFailed: "删除智能体失败",
+  basicSettings: "基础",
+  addedAgent: "会话智能体",
+  noAgentAdded: "这个会话还没有设置智能体",
+  setAgent: "设置",
+  replaceAgent: "替换",
+  skills: "技能",
+  selectSkills: "选择技能",
+  noSkills: "暂无技能",
+  addedSkills: "已添加技能",
+  noSkillsAdded: "这个会话还没有添加技能",
+  manageSkills: "管理技能",
+  mcpServers: "MCP 服务",
+  noMCPServers: "暂无可用 MCP 服务",
+  addedMCPServers: "已添加 MCP 服务",
+  noMCPServersAdded: "这个会话还没有添加 MCP 服务",
+  selectMCPServer: "选择 MCP 服务",
+  manageMCP: "管理 MCP",
+  fromSkill: "来自技能",
+  add: "添加",
+  remove: "移除",
   sessionModel: "会话模型",
   done: "完成",
   chatCompletions: "Chat Completions",
@@ -991,6 +1555,10 @@ const zhCopy = {
   conversation: "对话",
   noMessages: "暂无对话",
   promptPlaceholder: "输入消息",
+  attachmentMessageTitle: "附件消息",
+  addAttachment: "添加附件",
+  removeAttachment: "移除附件",
+  attachmentLimit: "单个附件不超过 {size} MB；允许类型：{types}",
   send: "发送",
   sending: "发送中",
   editMessage: "编辑消息",
@@ -1034,6 +1602,26 @@ const enCopy: typeof zhCopy = {
   agentDefaultModelRequired: "Select a default model for the agent",
   agentSaveFailed: "Failed to save agent",
   agentDeleteFailed: "Failed to delete agent",
+  basicSettings: "Basic",
+  addedAgent: "Session agent",
+  noAgentAdded: "No agent set for this session",
+  setAgent: "Set",
+  replaceAgent: "Replace",
+  skills: "Skills",
+  selectSkills: "Select skills",
+  noSkills: "No skills",
+  addedSkills: "Added skills",
+  noSkillsAdded: "No skills added to this session",
+  manageSkills: "Manage skills",
+  mcpServers: "MCP servers",
+  noMCPServers: "No available MCP servers",
+  addedMCPServers: "Added MCP servers",
+  noMCPServersAdded: "No MCP servers added to this session",
+  selectMCPServer: "Select MCP server",
+  manageMCP: "Manage MCP",
+  fromSkill: "From skill",
+  add: "Add",
+  remove: "Remove",
   sessionModel: "Session model",
   done: "Done",
   chatCompletions: "Chat Completions",
@@ -1046,6 +1634,10 @@ const enCopy: typeof zhCopy = {
   conversation: "Conversation",
   noMessages: "No messages",
   promptPlaceholder: "Enter message",
+  attachmentMessageTitle: "Attachment message",
+  addAttachment: "Add attachment",
+  removeAttachment: "Remove attachment",
+  attachmentLimit: "Each attachment up to {size} MB; allowed types: {types}",
   send: "Send",
   sending: "Sending",
   editMessage: "Edit message",

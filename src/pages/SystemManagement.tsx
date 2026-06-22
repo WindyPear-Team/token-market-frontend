@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowDown,
+  Bot,
   ArrowUp,
   CalendarCheck,
   CreditCard,
@@ -37,8 +38,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import api from "@/lib/api"
+import AdvancedChatManagement from "./AdvancedChatManagement"
 import { useI18n } from "@/lib/i18n"
-import { defaultPublicSettings, parseTopNavItems } from "@/lib/public-settings"
+import { defaultPublicSettings, isPremiumEdition, parseTopNavItems } from "@/lib/public-settings"
 import type { PublicSettings } from "@/lib/public-settings"
 
 interface Group {
@@ -241,21 +243,24 @@ type SystemTab =
   | "statusMonitor"
   | "groups"
   | "metaModels"
+  | "advancedChatAttachments"
+  | "advancedChatMCP"
   | "subscriptionPlans"
   | "redeemCodes"
 
-type SystemSection = "general" | "auth" | "content" | "operations" | "subscriptions" | "redeemCodes"
+type SystemSection = "general" | "auth" | "content" | "operations" | "advancedChat" | "subscriptions" | "redeemCodes"
 
 const systemSectionTabs: Record<SystemSection, SystemTab[]> = {
   general: ["basic", "billing", "checkIn", "security"],
   auth: ["auth", "email"],
   content: ["content", "topNavigation", "navigation"],
   operations: ["statusMonitor", "payment", "groups", "metaModels", "subscriptionPlans", "redeemCodes"],
+  advancedChat: ["advancedChatAttachments", "advancedChatMCP"],
   subscriptions: ["subscriptionPlans"],
   redeemCodes: ["redeemCodes"],
 }
 
-const premiumOnlySystemTabs: SystemTab[] = ["metaModels", "subscriptionPlans", "redeemCodes"]
+const premiumOnlySystemTabs: SystemTab[] = ["metaModels", "advancedChatAttachments", "advancedChatMCP", "subscriptionPlans", "redeemCodes"]
 
 interface NavRow {
   id: string
@@ -400,7 +405,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   })
   const { data: redeemCodes = [] } = useQuery<RedeemCode[]>({
     queryKey: ["redeem-codes"],
-    enabled: settings?.edition === "premium",
+    enabled: isPremiumEdition(settings),
     queryFn: async () => {
       const res = await api.get("/redeem-codes")
       return Array.isArray(res.data) ? res.data : []
@@ -408,7 +413,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   })
   const { data: subscriptionPlans = [] } = useQuery<SubscriptionPlan[]>({
     queryKey: ["subscription-plans"],
-    enabled: settings?.edition === "premium",
+    enabled: isPremiumEdition(settings),
     queryFn: async () => {
       const res = await api.get("/subscription-plans")
       return Array.isArray(res.data) ? res.data : []
@@ -416,7 +421,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   })
   const { data: metaModels = [] } = useQuery<MetaModel[]>({
     queryKey: ["meta-models"],
-    enabled: settings?.edition === "premium",
+    enabled: isPremiumEdition(settings),
     queryFn: async () => {
       const res = await api.get("/meta-models")
       return Array.isArray(res.data) ? res.data : []
@@ -451,7 +456,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     }
   }, [settings])
 
-  const isPremiumEdition = form.edition === "premium"
+  const isPremium = settings ? isPremiumEdition(settings) : isPremiumEdition(form)
 
   useEffect(() => {
     if (!allowedTabs.includes(activeTab)) {
@@ -460,10 +465,10 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   }, [activeTab, allowedTabs, defaultTab])
 
   useEffect(() => {
-    if (settings && !isPremiumEdition && premiumOnlySystemTabs.includes(activeTab)) {
+    if (settings && !isPremium && premiumOnlySystemTabs.includes(activeTab)) {
       setIsPremiumNoticeOpen(true)
     }
-  }, [activeTab, isPremiumEdition, settings])
+  }, [activeTab, isPremium, settings])
 
   const saveSettings = useMutation({
     mutationFn: async (checkInStreakRewards: string) => {
@@ -723,7 +728,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
     })
   }
 
-  const shouldShowSave = !["groups", "metaModels", "subscriptionPlans", "redeemCodes"].includes(activeTab)
+  const shouldShowSave = !["groups", "metaModels", "advancedChatAttachments", "advancedChatMCP", "subscriptionPlans", "redeemCodes"].includes(activeTab)
   const visibleTabs = systemTabs(copy).filter((tab) => allowedTabs.includes(tab.id))
   const canCreateRedeemCode = Number(redeemDraft.amount || 0) > 0 || Boolean(redeemDraft.group_id) || Boolean(redeemDraft.subscription_plan_id)
   const canSaveSubscriptionPlan = Boolean(subscriptionPlanDraft.name.trim()) && Number(subscriptionPlanDraft.reset_amount || 0) > 0 && Number(subscriptionPlanDraft.reset_interval_days || 0) > 0
@@ -740,7 +745,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   const allVisibleRedeemCodesSelected = visibleRedeemCodes.length > 0 && visibleRedeemCodes.every((code) => selectedRedeemCodeIDs.includes(code.id))
 
   const handleSaveSettings = () => {
-    if (!isPremiumEdition && form.chat_page_mode === "advanced") {
+    if (!isPremium && form.chat_page_mode === "advanced") {
       updateField("chat_page_mode", "basic")
       setIsPremiumNoticeOpen(true)
       return
@@ -775,7 +780,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
             variant={activeTab === tab.id ? "default" : "outline"}
             className="shrink-0 gap-2"
             onClick={() => {
-              if ((tab.id === "security" || premiumOnlySystemTabs.includes(tab.id)) && !isPremiumEdition) {
+              if (settings && (tab.id === "security" || premiumOnlySystemTabs.includes(tab.id)) && !isPremium) {
                 setIsPremiumNoticeOpen(true)
                 return
               }
@@ -917,7 +922,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
-      {isPremiumEdition && activeTab === "security" && (
+      {isPremium && activeTab === "security" && (
         <SettingsPanel title={copy.security}>
           <div className="grid gap-5">
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1329,7 +1334,15 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
-      {isPremiumEdition && activeTab === "subscriptionPlans" && (
+      {isPremium && activeTab === "advancedChatAttachments" && (
+        <AdvancedChatManagement mode="attachments" />
+      )}
+
+      {isPremium && activeTab === "advancedChatMCP" && (
+        <AdvancedChatManagement mode="mcp" />
+      )}
+
+      {isPremium && activeTab === "subscriptionPlans" && (
         <SettingsPanel title={copy.subscriptionPlans}>
           <div className="space-y-5">
             <div className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1410,7 +1423,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
-      {isPremiumEdition && activeTab === "metaModels" && (
+      {isPremium && activeTab === "metaModels" && (
         <SettingsPanel title={copy.metaModels}>
           <div className="space-y-5">
             <div className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1494,7 +1507,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
-      {isPremiumEdition && activeTab === "redeemCodes" && (
+      {isPremium && activeTab === "redeemCodes" && (
         <SettingsPanel title={copy.redeemCodes}>
           <div className="space-y-5">
             <div className="flex flex-col gap-3 rounded-md border p-3">
@@ -1653,6 +1666,8 @@ function systemTabs(copy: SystemCopy): Array<{ id: SystemTab; label: string; ico
     { id: "statusMonitor", label: copy.statusMonitor, icon: Activity },
     { id: "groups", label: copy.groups, icon: Layers },
     { id: "metaModels", label: copy.metaModels, icon: Layers },
+    { id: "advancedChatAttachments", label: copy.advancedChatAttachments, icon: Bot },
+    { id: "advancedChatMCP", label: copy.advancedChatMCP, icon: Bot },
     { id: "subscriptionPlans", label: copy.subscriptionPlans, icon: HandCoins },
     { id: "redeemCodes", label: copy.redeemCodes, icon: Gift },
   ]
@@ -2646,6 +2661,9 @@ const zhCopy = {
   navigation: "侧边栏模块",
   statusMonitor: "状态监测",
   groups: "用户分组",
+  advancedChat: "高级聊天",
+  advancedChatAttachments: "附件设置",
+  advancedChatMCP: "MCP 服务器",
   siteName: "站点名称",
   siteNamePlaceholder: "例如 WindyPear API",
   baseURL: "Base URL",
@@ -2949,6 +2967,9 @@ const enCopy: SystemCopy = {
   navigation: "Sidebar Modules",
   statusMonitor: "Status Monitor",
   groups: "User Groups",
+  advancedChat: "Advanced Chat",
+  advancedChatAttachments: "Attachments",
+  advancedChatMCP: "MCP Servers",
   siteName: "Site name",
   siteNamePlaceholder: "For example, WindyPear API",
   baseURL: "Base URL",

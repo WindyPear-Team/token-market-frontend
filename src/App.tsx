@@ -26,6 +26,8 @@ import StatusPage from "./pages/StatusPage"
 import api from "./lib/api"
 import { I18nProvider, useI18n } from "./lib/i18n"
 import { ToastProvider } from "./components/ui/toast"
+import { Button } from "./components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog"
 import type { TranslationKey } from "./lib/i18n"
 import type { PublicSettings } from "./lib/public-settings"
 import { isAdvancedChatEnabled, withPublicSettingsDefaults } from "./lib/public-settings"
@@ -96,6 +98,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AdvancedChatRoute = () => {
   const { t } = useI18n()
+  const [isBlockedOpen, setIsBlockedOpen] = useState(false)
   const { data: settings, isLoading } = useQuery<PublicSettings>({
     queryKey: ["public-settings"],
     queryFn: async () => {
@@ -113,14 +116,26 @@ const AdvancedChatRoute = () => {
   }
 
   if (!isAdvancedChatEnabled(settings)) {
-    return <Navigate to="/dashboard/chat" replace />
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Dialog open={isBlockedOpen || true} onOpenChange={() => setIsBlockedOpen(true)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("premium.requiredTitle")}</DialogTitle>
+            </DialogHeader>
+            <div className="text-sm text-muted-foreground">{t("premium.advancedChatRequired")}</div>
+            <DialogFooter>
+              <Button asChild>
+                <a href="/dashboard/chat">{t("premium.requiredAction")}</a>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
   }
 
-  return (
-    <PageTransition>
-      <AdvancedChat />
-    </PageTransition>
-  )
+  return <AdvancedChat />
 }
 
 const SetupGate = ({ children }: { children: React.ReactNode }) => {
@@ -210,6 +225,12 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   if (normalizedPathname === "/dashboard/admin-overview") {
     return t("nav.adminOverview")
   }
+  if (normalizedPathname === "/dashboard/advanced-chat") {
+    return t("nav.advancedChat")
+  }
+  if (normalizedPathname === "/dashboard/admin/advanced-chat") {
+    return t("nav.advancedChat")
+  }
   if (normalizedPathname === "/dashboard/data-board") {
     return t("dataBoard.title")
   }
@@ -239,6 +260,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   }
   if (normalizedPathname === "/chat/agents") {
     return t("nav.agents")
+  }
+  if (normalizedPathname === "/chat/mcp") {
+    return "MCP"
   }
   if (normalizedPathname === "/dashboard/chat") {
     return t("nav.chat")
@@ -315,6 +339,10 @@ function App() {
                     </AdminRoute>
                   }
                 />
+                <Route
+                  path="advanced-chat"
+                  element={<Navigate to="/dashboard/admin/advanced-chat" replace />}
+                />
                 <Route path="admin" element={<Navigate to="/dashboard/admin/general" replace />} />
                 <Route
                   path="admin/general"
@@ -345,6 +373,14 @@ function App() {
                   element={
                     <AdminRoute>
                       <SystemManagement section="operations" />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/advanced-chat"
+                  element={
+                    <AdminRoute>
+                      <SystemManagement section="advancedChat" />
                     </AdminRoute>
                   }
                 />

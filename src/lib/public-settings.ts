@@ -106,9 +106,13 @@ export function withPublicSettingsDefaults(settings?: Partial<PublicSettings>): 
   return { ...defaultPublicSettings, ...(settings || {}) }
 }
 
+export function isPremiumEdition(settings?: Partial<Pick<PublicSettings, "edition">>) {
+  return String(settings?.edition ?? defaultPublicSettings.edition).trim().toLowerCase() === "premium"
+}
+
 export function isAdvancedChatEnabled(settings?: Partial<PublicSettings>) {
   const publicSettings = withPublicSettingsDefaults(settings)
-  return publicSettings.edition === "premium" && publicSettings.chat_page_mode === "advanced"
+  return isPremiumEdition(publicSettings) && String(publicSettings.chat_page_mode).trim().toLowerCase() === "advanced"
 }
 
 export function chatPathForSettings(settings?: Partial<PublicSettings>) {

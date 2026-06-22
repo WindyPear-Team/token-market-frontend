@@ -1,8 +1,13 @@
-import { Bot, MessageSquare, UserCircle } from "lucide-react"
+import { Bot, Menu, MessageSquare, Sparkles, UserCircle } from "lucide-react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import Chat from "./Chat"
 import Agents from "./Agents"
+import Skills from "./Skills"
+import AdvancedChatMCP from "./AdvancedChatMCP"
+import { Button } from "@/components/ui/button"
+import { PageTransition } from "@/components/layout/PageTransition"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { PublicSettings } from "@/lib/public-settings"
@@ -16,7 +21,7 @@ interface CurrentUser {
 }
 
 export default function AdvancedChat() {
-  const { t } = useI18n()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const { data: settings } = useQuery<PublicSettings>({
     queryKey: ["public-settings"],
     queryFn: async () => {
@@ -35,12 +40,24 @@ export default function AdvancedChat() {
   const topNavItems = parseTopNavItems(publicSettings.top_nav_items)
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur sm:px-6">
-        <Link to="/" className="flex min-w-0 items-center gap-2">
-          {publicSettings.icon_url && <img src={publicSettings.icon_url} alt="" className="h-7 w-7 shrink-0 rounded object-cover" />}
-          <span className="truncate text-sm font-semibold">{publicSettings.site_name}</span>
-        </Link>
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button
+            className="lg:hidden"
+            variant="outline"
+            size="icon"
+            onClick={() => setIsSidebarOpen((open) => !open)}
+            aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
+            aria-expanded={isSidebarOpen}
+          >
+            <Menu size={18} />
+          </Button>
+          <Link to="/" className="flex min-w-0 items-center gap-2">
+            {publicSettings.icon_url && <img src={publicSettings.icon_url} alt="" className="h-7 w-7 shrink-0 rounded object-cover" />}
+            <span className="truncate text-sm font-semibold">{publicSettings.site_name}</span>
+          </Link>
+        </div>
         <div className="flex min-w-0 items-center gap-3">
           {publicSettings.top_nav_enabled && topNavItems.length > 0 && (
             <div className="hidden min-w-0 items-center gap-4 text-sm text-muted-foreground lg:flex">
@@ -53,56 +70,101 @@ export default function AdvancedChat() {
         </div>
       </header>
 
-      {publicSettings.announcement && (
-        <div className="border-b bg-muted/50 px-4 py-3 text-sm sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl whitespace-pre-wrap">{publicSettings.announcement}</div>
+      <div className="flex min-h-0 flex-1">
+        <div className="hidden lg:block lg:h-full lg:shrink-0">
+          <AdvancedChatSidebar />
         </div>
-      )}
 
-      <main className="mx-auto grid w-full max-w-7xl gap-4 p-4 sm:p-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:p-8">
-        <AdvancedChatSidebar chatLabel={t("nav.chat")} agentsLabel={t("nav.agents")} />
-        <div className="min-w-0">
-          <Routes>
-            <Route index element={<Chat variant="advanced" />} />
-            <Route path="agents" element={<Agents />} />
-            <Route path="*" element={<Navigate to="/chat" replace />} />
-          </Routes>
-        </div>
-      </main>
+        {isSidebarOpen && (
+          <div className="fixed inset-0 top-16 z-40 lg:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50"
+              aria-label="Close menu"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <div className="relative z-50 h-full w-72 max-w-[85vw]">
+              <AdvancedChatSidebar className="w-full" onNavigate={() => setIsSidebarOpen(false)} />
+            </div>
+          </div>
+        )}
 
-      {publicSettings.footer_text && (
-        <footer className="border-t px-4 py-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
-          {publicSettings.footer_text}
-        </footer>
-      )}
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {publicSettings.announcement && (
+            <div className="border-b bg-muted/50 px-4 py-3 text-sm sm:px-6 lg:px-8">
+              <div className="mx-auto max-w-6xl whitespace-pre-wrap">{publicSettings.announcement}</div>
+            </div>
+          )}
+          <div className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">
+            <PageTransition>
+              <Routes>
+                <Route index element={<Chat variant="advanced" />} />
+                <Route path="agents" element={<Agents />} />
+                <Route path="skills" element={<Skills />} />
+                <Route path="mcp" element={<AdvancedChatMCP />} />
+                <Route path="*" element={<Navigate to="/chat" replace />} />
+              </Routes>
+            </PageTransition>
+          </div>
+          {publicSettings.footer_text && (
+            <footer className="border-t px-4 py-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
+              {publicSettings.footer_text}
+            </footer>
+          )}
+        </main>
+      </div>
     </div>
   )
 }
 
-function AdvancedChatSidebar({ chatLabel, agentsLabel }: { chatLabel: string; agentsLabel: string }) {
+function AdvancedChatSidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
   const location = useLocation()
+  const { language, setLanguage, t } = useI18n()
   const items = [
-    { href: "/chat", label: chatLabel, icon: MessageSquare, active: location.pathname === "/chat" },
-    { href: "/chat/agents", label: agentsLabel, icon: Bot, active: location.pathname === "/chat/agents" },
+    { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" },
+    { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
+    { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },
+    { href: "/chat/mcp", label: "MCP", icon: Bot, active: location.pathname === "/chat/mcp" },
   ]
 
   return (
-    <aside className="h-fit rounded-md border bg-card p-2">
-      <nav className="flex gap-1 lg:flex-col">
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            to={item.href}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors lg:flex-none",
-              item.active ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-            )}
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{item.label}</span>
-          </Link>
-        ))}
+    <aside className={cn("flex h-full w-64 flex-col border-r bg-card", className)}>
+      <nav className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-1">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                item.active ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+              )}
+            >
+              <item.icon size={18} />
+              <span className="flex-1 truncate">{item.label}</span>
+            </Link>
+          ))}
+        </div>
       </nav>
+      <div className="shrink-0 border-t p-4">
+        <div className="flex rounded-md border p-1 text-sm">
+          <button
+            type="button"
+            className={cn("flex-1 rounded px-2 py-1", language === "zh" && "bg-primary text-primary-foreground")}
+            onClick={() => setLanguage("zh")}
+          >
+            {t("settings.chinese")}
+          </button>
+          <button
+            type="button"
+            className={cn("flex-1 rounded px-2 py-1", language === "en" && "bg-primary text-primary-foreground")}
+            onClick={() => setLanguage("en")}
+          >
+            {t("settings.english")}
+          </button>
+        </div>
+      </div>
     </aside>
   )
 }
