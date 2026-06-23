@@ -25,12 +25,21 @@ interface APIKey {
   enabled: boolean
 }
 
+interface ChatToolCall {
+  id: string
+  name: string
+  server?: string
+  tool?: string
+  status: string
+}
+
 interface ChatMessage {
   id: string
   role: "user" | "assistant"
   content: string
   created_at: string
   updated_at?: string
+  tool_calls?: ChatToolCall[]
 }
 
 interface ChatSession {
@@ -223,6 +232,16 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     () => sessions.find((session) => session.id === activeSessionID) || sessions[0],
     [sessions, activeSessionID]
   )
+  const activeToolCalls = useMemo(() => {
+    const messages = activeSession?.messages || []
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const toolCalls = messages[index].tool_calls || []
+      if (toolCalls.length > 0) {
+        return toolCalls
+      }
+    }
+    return []
+  }, [activeSession?.messages])
   const selectedAgent = useMemo(() => {
     if (!isAdvanced) {
       return undefined
@@ -530,6 +549,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
 
     try {
       let answer = ""
+      let answerToolCalls: ChatToolCall[] = []
       if (isAdvanced) {
         const res = await api.post("/user/advanced-chat/completions", {
           model: resolvedModel,
@@ -540,6 +560,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
           mcp_server_ids: session.mcp_server_ids,
         })
         answer = typeof res.data?.message?.content === "string" ? res.data.message.content : ""
+        answerToolCalls = normalizeToolCalls(res.data?.tool_call_details)
       } else {
         const systemPrompt = ""
         const request = chatRequest(endpointMode, resolvedModel, rawKey, nextMessages, systemPrompt)
@@ -560,7 +581,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
         }
         answer = responseTextFromPayload(payload)
       }
-      const assistantMessage = createMessage("assistant", answer || copy.emptyResponse)
+      const assistantMessage = createMessage("assistant", answer || copy.emptyResponse, answerToolCalls)
       updateSession(session.id, (current) => ({ ...current, messages: [...current.messages, assistantMessage] }))
     } catch (err) {
       error(apiErrorMessage(err, err instanceof Error ? err.message : copy.sendFailed))
@@ -754,7 +775,27 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                                 onChange={(event) => setEditingContent(event.target.value)}
                               />
                             ) : (
-                              <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                              <>
+                                {message.tool_calls && message.tool_calls.length > 0 && (
+                                  <div className="mb-2 flex flex-wrap gap-1.5">
+                                    {message.tool_calls.map((toolCall) => (
+                                      <span
+                                        key={toolCall.id}
+                                        className={cn(
+                                          "inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-[11px]",
+                                          toolCall.status === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+                                        )}
+                                        title={[toolCall.server, toolCall.tool].filter(Boolean).join(" / ") || toolCall.name}
+                                      >
+                                        <Server size={11} className="shrink-0" />
+                                        <span className="truncate">{toolCall.server ? `${toolCall.server}: ` : ""}{toolCall.tool || toolCall.name}</span>
+                                        <span className="shrink-0 opacity-70">{toolStatusLabel(toolCall.status, copy)}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                              </>
                             )}
                           </div>
                           <div className="flex shrink-0 gap-1">
@@ -784,6 +825,28 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                   ))
                 )}
               </div>
+
+              {isAdvanced && activeToolCalls.length > 0 && (
+                <div className="rounded-md border bg-muted/30 p-3">
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.usedTools}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {activeToolCalls.map((toolCall) => (
+                      <span
+                        key={toolCall.id}
+                        className={cn(
+                          "inline-flex max-w-full items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs",
+                          toolCall.status === "ok" ? "border-emerald-200 text-emerald-700" : "border-amber-200 text-amber-700"
+                        )}
+                        title={[toolCall.server, toolCall.tool].filter(Boolean).join(" / ") || toolCall.name}
+                      >
+                        <Server size={13} className="shrink-0" />
+                        <span className="truncate">{toolCall.server ? `${toolCall.server}: ` : ""}{toolCall.tool || toolCall.name}</span>
+                        <span className="shrink-0 opacity-70">{toolStatusLabel(toolCall.status, copy)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -1368,7 +1431,34 @@ function normalizeMessage(value: unknown): ChatMessage | null {
     content: value.content,
     created_at: typeof value.created_at === "string" ? value.created_at : new Date().toISOString(),
     updated_at: typeof value.updated_at === "string" ? value.updated_at : undefined,
+    tool_calls: normalizeToolCalls(value.tool_calls),
   }
+}
+
+function normalizeToolCalls(value: unknown): ChatToolCall[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  const calls: ChatToolCall[] = []
+  value.forEach((item, index) => {
+    if (!isRecord(item)) {
+      return
+    }
+    const name = typeof item.name === "string" ? item.name : ""
+    const tool = typeof item.tool === "string" ? item.tool : ""
+    const server = typeof item.server === "string" ? item.server : ""
+    if (!name && !tool) {
+      return
+    }
+    calls.push({
+      id: `${name || tool}-${index}`,
+      name: name || tool,
+      server,
+      tool,
+      status: typeof item.status === "string" && item.status ? item.status : "ok",
+    })
+  })
+  return calls
 }
 
 function normalizeAgent(value: unknown): ChatAgent | null {
@@ -1423,8 +1513,8 @@ function createSession(input: { agentID?: string; modelName?: string } = {}): Ch
   }
 }
 
-function createMessage(role: ChatMessage["role"], content: string): ChatMessage {
-  return { id: createID(), role, content, created_at: new Date().toISOString() }
+function createMessage(role: ChatMessage["role"], content: string, toolCalls: ChatToolCall[] = []): ChatMessage {
+  return { id: createID(), role, content, created_at: new Date().toISOString(), tool_calls: toolCalls }
 }
 
 function createID() {
@@ -1495,6 +1585,19 @@ function stringFromUnknown(value: unknown) {
     return String(value)
   }
   return undefined
+}
+
+function toolStatusLabel(status: string, copy: typeof zhCopy) {
+  switch (status) {
+    case "ok":
+      return copy.toolStatusOk
+    case "missing":
+      return copy.toolStatusMissing
+    case "invalid_arguments":
+      return copy.toolStatusInvalidArguments
+    default:
+      return copy.toolStatusError
+  }
 }
 
 function apiErrorMessage(err: unknown, fallback: string) {
@@ -1595,6 +1698,11 @@ const zhCopy = {
   modelRequired: "请选择模型",
   sendFailed: "发送失败",
   emptyResponse: "空响应",
+  usedTools: "本轮调用工具",
+  toolStatusOk: "成功",
+  toolStatusError: "失败",
+  toolStatusMissing: "未找到",
+  toolStatusInvalidArguments: "参数错误",
 }
 
 const enCopy: typeof zhCopy = {
@@ -1678,4 +1786,9 @@ const enCopy: typeof zhCopy = {
   modelRequired: "Select a model",
   sendFailed: "Send failed",
   emptyResponse: "Empty response",
+  usedTools: "Tools used in this turn",
+  toolStatusOk: "OK",
+  toolStatusError: "Error",
+  toolStatusMissing: "Missing",
+  toolStatusInvalidArguments: "Bad args",
 }
