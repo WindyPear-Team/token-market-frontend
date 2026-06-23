@@ -4,12 +4,17 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-export const getAuthLoginURL = (referralCode?: string | null) => {
+export const getAuthLoginURL = (referralCode?: string | null, agreementAccepted = false) => {
   const code = (referralCode || localStorage.getItem("referral_code") || "").trim();
-  if (!code) {
-    return "/auth/login";
+  const params = new URLSearchParams();
+  if (code) {
+    params.set("ref", code);
   }
-  return `/auth/login?ref=${encodeURIComponent(code)}`;
+  if (agreementAccepted) {
+    params.set("agreement_accepted", "true");
+  }
+  const query = params.toString();
+  return query ? `/auth/login?${query}` : "/auth/login";
 };
 
 // Add a request interceptor to include the JWT token

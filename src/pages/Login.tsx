@@ -33,6 +33,7 @@ export default function Login() {
   const [password, setPassword] = useState("")
   const [emailCode, setEmailCode] = useState("")
   const [captchaToken, setCaptchaToken] = useState("")
+  const [agreementAccepted, setAgreementAccepted] = useState(false)
   const labels = language === "zh"
     ? { about: "关于", privacy: "隐私政策", terms: "用户协议" }
     : { about: "About", privacy: "Privacy", terms: "Terms" }
@@ -55,9 +56,12 @@ export default function Login() {
 
   const submitPassword = useMutation({
     mutationFn: async () => {
+      if (!agreementReady) {
+        throw new Error(copy.agreementRequired)
+      }
       const endpoint = mode === "login" ? "/auth/password/login" : "/auth/password/register"
       const payload = mode === "login"
-        ? { identifier, password, captcha_token: captchaToken }
+        ? { identifier, password, captcha_token: captchaToken, agreement_accepted: true }
         : {
             username,
             email,
@@ -65,6 +69,7 @@ export default function Login() {
             email_code: emailCode,
             captcha_token: captchaToken,
             referral_code: localStorage.getItem("referral_code") || "",
+            agreement_accepted: true,
           }
       const response = await fetch(endpoint, {
         method: "POST",
@@ -87,13 +92,16 @@ export default function Login() {
 
   const signInWithPasskey = useMutation({
     mutationFn: async () => {
+      if (!agreementReady) {
+        throw new Error(copy.agreementRequired)
+      }
       if (!passkeySupported()) {
         throw new Error(copy.passkeyUnsupported)
       }
       const optionsResponse = await fetch("/auth/passkey/login/options", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier }),
+        body: JSON.stringify({ identifier, agreement_accepted: true }),
       })
       const options = await optionsResponse.json().catch(() => ({}))
       if (!optionsResponse.ok) {
@@ -143,14 +151,24 @@ export default function Login() {
   })
 
   const handleOIDCLogin = () => {
-    window.location.href = getAuthLoginURL(new URLSearchParams(window.location.search).get("ref"))
+    if (!agreementReady) {
+      error(copy.agreementRequired)
+      return
+    }
+    window.location.href = getAuthLoginURL(new URLSearchParams(window.location.search).get("ref"), true)
   }
 
   const passwordAuthEnabled = publicSettings.password_login_enabled || publicSettings.password_registration_enabled
   const oidcOnly = publicSettings.oidc_enabled && !passwordAuthEnabled && !publicSettings.passkey_enabled
-  const canSubmit = mode === "login"
+  const privacyHref = legalHref("privacy", publicSettings)
+  const termsHref = legalHref("terms", publicSettings)
+  const hasAgreement = Boolean(privacyHref || termsHref)
+  const agreementMode = String(publicSettings.auth_agreement_mode || "notice").trim().toLowerCase()
+  const requiresAgreementCheckbox = hasAgreement && agreementMode === "checkbox"
+  const agreementReady = !requiresAgreementCheckbox || agreementAccepted
+  const canSubmit = (mode === "login"
     ? Boolean(identifier.trim() && password)
-    : Boolean(username.trim() && email.trim() && password && (!publicSettings.email_verification_required || emailCode.trim()))
+    : Boolean(username.trim() && email.trim() && password && (!publicSettings.email_verification_required || emailCode.trim()))) && agreementReady
   const noLoginMethod = !passwordAuthEnabled && !publicSettings.oidc_enabled && !publicSettings.passkey_enabled
 
   if (isSettingsLoading && !settings) {
@@ -224,6 +242,18 @@ export default function Login() {
                 <HCaptcha siteKey={publicSettings.hcaptcha_site_key} onToken={setCaptchaToken} />
               )}
 
+              {hasAgreement && (
+                <AgreementControl
+                  copy={copy}
+                  labels={labels}
+                  mode={requiresAgreementCheckbox ? "checkbox" : "notice"}
+                  checked={agreementAccepted}
+                  privacyHref={privacyHref}
+                  termsHref={termsHref}
+                  onCheckedChange={setAgreementAccepted}
+                />
+              )}
+
               {passwordAuthEnabled && (
                 <Button className="w-full" disabled={!canSubmit || submitPassword.isPending} onClick={() => submitPassword.mutate()}>
                   {mode === "login" ? copy.login : copy.register}
@@ -231,24 +261,24 @@ export default function Login() {
               )}
 
               {publicSettings.oidc_enabled && (
-                <Button variant="outline" className="w-full" onClick={handleOIDCLogin}>
+                <Button variant="outline" className="w-full" disabled={!agreementReady} onClick={handleOIDCLogin}>
                   {t("login.button")}
                 </Button>
               )}
 
               {publicSettings.passkey_enabled && (
-                <Button variant="outline" className="w-full" disabled={signInWithPasskey.isPending} onClick={() => signInWithPasskey.mutate()}>
+                <Button variant="outline" className="w-full" disabled={!agreementReady || signInWithPasskey.isPending} onClick={() => signInWithPasskey.mutate()}>
                   {copy.passkeyLogin}
                 </Button>
               )}
             </>
           )}
 
-          {(publicSettings.about_html || publicSettings.privacy_policy || publicSettings.terms) && (
+          {(publicSettings.about_html || privacyHref || termsHref) && (
             <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
               {publicSettings.about_html && <Link to="/about">{labels.about}</Link>}
-              {publicSettings.privacy_policy && <Link to="/privacy">{labels.privacy}</Link>}
-              {publicSettings.terms && <Link to="/terms">{labels.terms}</Link>}
+              {privacyHref && <LegalLink href={privacyHref} label={labels.privacy} />}
+              {termsHref && <LegalLink href={termsHref} label={labels.terms} />}
             </div>
           )}
           {publicSettings.footer_text && (
@@ -258,6 +288,109 @@ export default function Login() {
       </Card>
     </div>
   )
+}
+
+type LegalKind = "privacy" | "terms"
+type LegalLabels = { privacy: string; terms: string }
+type AgreementMode = "notice" | "checkbox"
+type AgreementCopy = {
+  agreementCheckboxPrefix: string
+  agreementNoticePrefix: string
+  agreementAnd: string
+}
+
+function AgreementControl({
+  copy,
+  labels,
+  mode,
+  checked,
+  privacyHref,
+  termsHref,
+  onCheckedChange,
+}: {
+  copy: AgreementCopy
+  labels: LegalLabels
+  mode: AgreementMode
+  checked: boolean
+  privacyHref: string
+  termsHref: string
+  onCheckedChange: (checked: boolean) => void
+}) {
+  const content = (
+    <>
+      {mode === "checkbox" ? copy.agreementCheckboxPrefix : copy.agreementNoticePrefix}
+      <AgreementLinks copy={copy} labels={labels} privacyHref={privacyHref} termsHref={termsHref} />
+    </>
+  )
+
+  if (mode === "checkbox") {
+    return (
+      <label className="flex items-start gap-2 rounded-md border p-3 text-xs leading-5 text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={checked}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+          onChange={(event) => onCheckedChange(event.target.checked)}
+        />
+        <span>{content}</span>
+      </label>
+    )
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+      {content}
+    </div>
+  )
+}
+
+function AgreementLinks({
+  copy,
+  labels,
+  privacyHref,
+  termsHref,
+}: {
+  copy: AgreementCopy
+  labels: LegalLabels
+  privacyHref: string
+  termsHref: string
+}) {
+  const privacyLink = privacyHref ? <LegalLink href={privacyHref} label={labels.privacy} className="mx-1 font-medium text-foreground" /> : null
+  const termsLink = termsHref ? <LegalLink href={termsHref} label={labels.terms} className="mx-1 font-medium text-foreground" /> : null
+
+  if (privacyLink && termsLink) {
+    return (
+      <>
+        {privacyLink}
+        {copy.agreementAnd}
+        {termsLink}
+      </>
+    )
+  }
+  return privacyLink || termsLink
+}
+
+function LegalLink({ href, label, className = "" }: { href: string; label: string; className?: string }) {
+  const external = /^https?:\/\//i.test(href)
+  const linkClassName = `${className} underline-offset-4 hover:underline`.trim()
+  if (href.startsWith("/") && !external) {
+    return <Link to={href} className={linkClassName}>{label}</Link>
+  }
+  return (
+    <a href={href} className={linkClassName} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>
+      {label}
+    </a>
+  )
+}
+
+function legalHref(kind: LegalKind, settings: PublicSettings) {
+  const configuredURL = kind === "privacy" ? settings.privacy_policy_url : settings.terms_url
+  const inlineContent = kind === "privacy" ? settings.privacy_policy : settings.terms
+  const trimmedURL = configuredURL.trim()
+  if (trimmedURL) {
+    return trimmedURL
+  }
+  return inlineContent.trim() ? `/${kind}` : ""
 }
 
 function HCaptcha({ siteKey, onToken }: { siteKey: string; onToken: (token: string) => void }) {
@@ -318,6 +451,10 @@ const zhCopy = {
   passkeyUnsupported: "当前浏览器不支持 Passkey",
   passkeyFailed: "Passkey 登录失败",
   noLoginMethod: "当前没有启用可用的登录方式",
+  agreementCheckboxPrefix: "我已阅读并同意",
+  agreementNoticePrefix: "点击继续即表示你已阅读并同意",
+  agreementAnd: "和",
+  agreementRequired: "请先阅读并同意相关协议",
 }
 
 const enCopy: typeof zhCopy = {
@@ -337,4 +474,8 @@ const enCopy: typeof zhCopy = {
   passkeyUnsupported: "This browser does not support passkeys",
   passkeyFailed: "Passkey sign-in failed",
   noLoginMethod: "No login method is enabled",
+  agreementCheckboxPrefix: "I have read and agree to",
+  agreementNoticePrefix: "By continuing, you agree to",
+  agreementAnd: "and",
+  agreementRequired: "Please read and agree to the agreements first",
 }

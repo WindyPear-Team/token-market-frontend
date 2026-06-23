@@ -971,6 +971,17 @@ export default function SystemManagement({ section = "general", initialTab }: { 
             <ToggleField label={copy.passwordRegistrationEnabled} checked={form.password_registration_enabled} onChange={(checked) => updateField("password_registration_enabled", checked)} />
             <ToggleField label={copy.emailVerificationRequired} checked={form.email_verification_required} onChange={(checked) => updateField("email_verification_required", checked)} />
             <ToggleField label={copy.passwordHCaptchaEnabled} checked={form.password_hcaptcha_enabled} onChange={(checked) => updateField("password_hcaptcha_enabled", checked)} />
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium">{copy.authAgreementMode}</span>
+              <select
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={form.auth_agreement_mode || "notice"}
+                onChange={(event) => updateField("auth_agreement_mode", event.target.value)}
+              >
+                <option value="notice">{copy.authAgreementModeNotice}</option>
+                <option value="checkbox">{copy.authAgreementModeCheckbox}</option>
+              </select>
+            </label>
             <TextField label={copy.hcaptchaSiteKey} value={form.hcaptcha_site_key} placeholder={copy.hcaptchaSiteKeyPlaceholder} onChange={(value) => updateField("hcaptcha_site_key", value)} />
             <TextField label={copy.hcaptchaSecret} value={form.hcaptcha_secret} placeholder={copy.hcaptchaSecretPlaceholder} type="password" onChange={(value) => updateField("hcaptcha_secret", value)} />
             <TextField label={copy.oidcIssuer} value={form.oidc_issuer} placeholder={copy.oidcIssuerPlaceholder} onChange={(value) => updateField("oidc_issuer", value)} />
@@ -1088,6 +1099,10 @@ export default function SystemManagement({ section = "general", initialTab }: { 
             </div>
             <TextareaField label={copy.announcement} value={form.announcement} placeholder={copy.announcementPlaceholder} onChange={(value) => updateField("announcement", value)} />
             <TextareaField label={copy.aboutHTML} value={form.about_html} placeholder={copy.aboutHTMLPlaceholder} onChange={(value) => updateField("about_html", value)} />
+            <div className="grid gap-4 lg:grid-cols-2">
+              <TextField label={copy.privacyPolicyURL} value={form.privacy_policy_url} placeholder={copy.privacyPolicyURLPlaceholder} onChange={(value) => updateField("privacy_policy_url", value)} />
+              <TextField label={copy.termsURL} value={form.terms_url} placeholder={copy.termsURLPlaceholder} onChange={(value) => updateField("terms_url", value)} />
+            </div>
             <TextareaField label={copy.privacyPolicy} value={form.privacy_policy} placeholder={copy.privacyPolicyPlaceholder} onChange={(value) => updateField("privacy_policy", value)} />
             <TextareaField label={copy.terms} value={form.terms} placeholder={copy.termsPlaceholder} onChange={(value) => updateField("terms", value)} />
           </div>
@@ -2715,6 +2730,9 @@ const zhCopy = {
   passwordRegistrationEnabled: "允许账号密码注册",
   emailVerificationRequired: "注册必须验证邮箱",
   passwordHCaptchaEnabled: "账号密码登录启用 hCaptcha",
+  authAgreementMode: "协议确认方式",
+  authAgreementModeNotice: "提示点击确认即同意",
+  authAgreementModeCheckbox: "要求用户手动勾选",
   hcaptchaSiteKey: "hCaptcha Site Key",
   hcaptchaSiteKeyPlaceholder: "前端显示用 site key",
   hcaptchaSecret: "hCaptcha Secret",
@@ -2760,6 +2778,10 @@ const zhCopy = {
   announcementDeleteFailed: "公告删除失败",
   aboutHTML: "关于页面 HTML",
   aboutHTMLPlaceholder: "<h2>关于我们</h2><p>...</p>",
+  privacyPolicyURL: "隐私政策地址",
+  privacyPolicyURLPlaceholder: "例如 https://example.com/privacy",
+  termsURL: "用户协议地址",
+  termsURLPlaceholder: "例如 https://example.com/terms",
   privacyPolicy: "隐私政策",
   privacyPolicyPlaceholder: "<h2>隐私政策</h2><p>...</p>",
   terms: "用户协议",
@@ -3021,6 +3043,9 @@ const enCopy: SystemCopy = {
   passwordRegistrationEnabled: "Allow password registration",
   emailVerificationRequired: "Require email verification on registration",
   passwordHCaptchaEnabled: "Enable hCaptcha for password auth",
+  authAgreementMode: "Agreement confirmation",
+  authAgreementModeNotice: "Notice: click to agree",
+  authAgreementModeCheckbox: "Require manual checkbox",
   hcaptchaSiteKey: "hCaptcha Site Key",
   hcaptchaSiteKeyPlaceholder: "Site key used by the frontend",
   hcaptchaSecret: "hCaptcha Secret",
@@ -3066,6 +3091,10 @@ const enCopy: SystemCopy = {
   announcementDeleteFailed: "Failed to delete announcement",
   aboutHTML: "About page HTML",
   aboutHTMLPlaceholder: "<h2>About</h2><p>...</p>",
+  privacyPolicyURL: "Privacy policy URL",
+  privacyPolicyURLPlaceholder: "For example, https://example.com/privacy",
+  termsURL: "Terms URL",
+  termsURLPlaceholder: "For example, https://example.com/terms",
   privacyPolicy: "Privacy policy",
   privacyPolicyPlaceholder: "<h2>Privacy policy</h2><p>...</p>",
   terms: "Terms",

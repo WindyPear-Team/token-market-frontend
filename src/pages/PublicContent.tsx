@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { useEffect } from "react"
 import { PublicTopBar } from "@/components/layout/PublicTopBar"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
@@ -21,11 +22,32 @@ export default function PublicContent({ kind }: { kind: ContentKind }) {
     ? { about: "关于", privacy: "隐私政策", terms: "用户协议" }
     : { about: "About", privacy: "Privacy", terms: "Terms" }
   const title = labels[kind]
+  const configuredURL = kind === "privacy"
+    ? publicSettings.privacy_policy_url.trim()
+    : kind === "terms"
+      ? publicSettings.terms_url.trim()
+      : ""
   const content = kind === "about"
     ? publicSettings.about_html
     : kind === "privacy"
       ? publicSettings.privacy_policy
       : publicSettings.terms
+  const shouldRedirect = configuredURL ? shouldRedirectToConfiguredURL(configuredURL) : false
+
+  useEffect(() => {
+    if (!configuredURL || !shouldRedirect) {
+      return
+    }
+    window.location.href = configuredURL
+  }, [configuredURL, shouldRedirect])
+
+  if (configuredURL && shouldRedirect) {
+    return (
+      <div className="flex min-h-screen w-screen items-center justify-center bg-background p-4 text-sm text-muted-foreground">
+        {language === "zh" ? "正在跳转..." : "Redirecting..."}
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -44,4 +66,12 @@ export default function PublicContent({ kind }: { kind: ContentKind }) {
       )}
     </div>
   )
+}
+
+function shouldRedirectToConfiguredURL(href: string) {
+  try {
+    return new URL(href, window.location.origin).href !== window.location.href
+  } catch {
+    return true
+  }
 }

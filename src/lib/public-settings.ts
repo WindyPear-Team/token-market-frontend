@@ -9,6 +9,9 @@ export interface PublicSettings {
   home_iframe_url: string
   privacy_policy: string
   terms: string
+  privacy_policy_url: string
+  terms_url: string
+  auth_agreement_mode: "notice" | "checkbox" | string
   announcement: string
   top_nav_enabled: boolean
   top_nav_items: string
@@ -61,6 +64,9 @@ export const defaultPublicSettings: PublicSettings = {
   home_iframe_url: "",
   privacy_policy: "",
   terms: "",
+  privacy_policy_url: "",
+  terms_url: "",
+  auth_agreement_mode: "notice",
   announcement: "",
   top_nav_enabled: false,
   top_nav_items: "",
