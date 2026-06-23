@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Copy, Plus, RotateCw, Save, Trash } from "lucide-react"
+import { Copy, Plus, RotateCcw, RotateCw, Save, Trash } from "lucide-react"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,7 @@ interface APIKey {
   enabled: boolean
   usage: UsageStats
   last_used_at?: string | null
+  usage_reset_at?: string | null
   created_at: string
 }
 
@@ -151,6 +152,18 @@ export default function APIKeys() {
     onError: () => error(t("settings.keyRotateFailed")),
   })
 
+  const resetAPIKeyUsage = useMutation<APIKey, Error, number>({
+    mutationFn: async (id) => {
+      const res = await api.post(`/user/api-keys/${id}/reset-usage`)
+      return normalizeAPIKey(res.data)
+    },
+    onSuccess: () => {
+      success(t("settings.keyUsageReset"))
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] })
+    },
+    onError: () => error(t("settings.keyUsageResetFailed")),
+  })
+
   const copyValue = async (value: string) => {
     if (!value) {
       return
@@ -203,6 +216,7 @@ export default function APIKeys() {
                 onSave={(id, payload) => updateAPIKey.mutate({ id, payload })}
                 onDelete={(id) => deleteAPIKey.mutate(id)}
                 onRotate={(id) => rotateAPIKey.mutate(id)}
+                onResetUsage={(id) => resetAPIKeyUsage.mutate(id)}
                 onCopy={copyValue}
               />
             ))
@@ -282,6 +296,7 @@ function APIKeyRow({
   onSave,
   onDelete,
   onRotate,
+  onResetUsage,
   onCopy,
 }: {
   apiKey: APIKey
@@ -289,6 +304,7 @@ function APIKeyRow({
   onSave: (id: number, payload: APIKeyPayload) => void
   onDelete: (id: number) => void
   onRotate: (id: number) => void
+  onResetUsage: (id: number) => void
   onCopy: (value: string) => void
 }) {
   const { t } = useI18n()
@@ -340,6 +356,10 @@ function APIKeyRow({
           <Button variant="outline" size="sm" onClick={() => onSave(apiKey.id, payload(!apiKey.enabled))}>
             {apiKey.enabled ? t("settings.disable") : t("settings.enable")}
           </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => onResetUsage(apiKey.id)} title={t("settings.resetUsage")}>
+            <RotateCcw size={14} />
+            {t("settings.resetUsage")}
+          </Button>
           <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600" onClick={() => onDelete(apiKey.id)}>
             <Trash size={14} />
           </Button>
@@ -381,6 +401,9 @@ function APIKeyRow({
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
         <div>
           {t("settings.lastUsed")}: {apiKey.last_used_at ? new Date(apiKey.last_used_at).toLocaleString() : "-"}
+        </div>
+        <div>
+          {t("settings.usageResetAt")}: {apiKey.usage_reset_at ? new Date(apiKey.usage_reset_at).toLocaleString() : "-"}
         </div>
         <div>
           {t("settings.createdAt")}: {new Date(apiKey.created_at).toLocaleString()}
@@ -582,6 +605,7 @@ function normalizeAPIKey(value: unknown): APIKey {
     enabled: Boolean(item.enabled),
     usage: normalizeUsage(item.usage),
     last_used_at: typeof item.last_used_at === "string" ? item.last_used_at : null,
+    usage_reset_at: typeof item.usage_reset_at === "string" ? item.usage_reset_at : null,
     created_at: typeof item.created_at === "string" ? item.created_at : new Date(0).toISOString(),
   }
 }

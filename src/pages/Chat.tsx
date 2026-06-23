@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
@@ -957,7 +958,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                                     ))}
                                   </div>
                                 )}
-                                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                                <MarkdownContent content={message.content} />
                               </>
                             )}
                           </div>
@@ -1304,6 +1305,286 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       )}
     </div>
   )
+}
+
+type MarkdownBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; level: number; text: string }
+  | { type: "quote"; lines: string[] }
+  | { type: "ul" | "ol"; items: string[] }
+  | { type: "code"; language: string; text: string }
+  | { type: "hr" }
+
+function MarkdownContent({ content }: { content: string }) {
+  const blocks = parseMarkdownBlocks(content)
+  if (blocks.length === 0) {
+    return <div className="text-muted-foreground">-</div>
+  }
+  return (
+    <div className="space-y-2 break-words leading-relaxed">
+      {blocks.map((block, index) => renderMarkdownBlock(block, index))}
+    </div>
+  )
+}
+
+function parseMarkdownBlocks(content: string): MarkdownBlock[] {
+  const lines = content.replace(/\r\n/g, "\n").split("\n")
+  const blocks: MarkdownBlock[] = []
+  let paragraph: string[] = []
+  let index = 0
+
+  const flushParagraph = () => {
+    const text = paragraph.join("\n").trim()
+    if (text) {
+      blocks.push({ type: "paragraph", text })
+    }
+    paragraph = []
+  }
+
+  while (index < lines.length) {
+    const line = lines[index]
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      flushParagraph()
+      index += 1
+      continue
+    }
+
+    const fence = trimmed.match(/^```([\w-]*)\s*$/)
+    if (fence) {
+      flushParagraph()
+      const language = fence[1] || ""
+      const codeLines: string[] = []
+      index += 1
+      while (index < lines.length && !lines[index].trim().startsWith("```")) {
+        codeLines.push(lines[index])
+        index += 1
+      }
+      if (index < lines.length) {
+        index += 1
+      }
+      blocks.push({ type: "code", language, text: codeLines.join("\n") })
+      continue
+    }
+
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph()
+      blocks.push({ type: "hr" })
+      index += 1
+      continue
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/)
+    if (heading) {
+      flushParagraph()
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2].trim() })
+      index += 1
+      continue
+    }
+
+    const unordered = line.match(/^\s*[-*+]\s+(.+)$/)
+    if (unordered) {
+      flushParagraph()
+      const items: string[] = []
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*[-*+]\s+(.+)$/)
+        if (!item) {
+          break
+        }
+        items.push(item[1].trim())
+        index += 1
+      }
+      blocks.push({ type: "ul", items })
+      continue
+    }
+
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/)
+    if (ordered) {
+      flushParagraph()
+      const items: string[] = []
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*\d+[.)]\s+(.+)$/)
+        if (!item) {
+          break
+        }
+        items.push(item[1].trim())
+        index += 1
+      }
+      blocks.push({ type: "ol", items })
+      continue
+    }
+
+    const quote = line.match(/^\s*>\s?(.*)$/)
+    if (quote) {
+      flushParagraph()
+      const quoteLines: string[] = []
+      while (index < lines.length) {
+        const item = lines[index].match(/^\s*>\s?(.*)$/)
+        if (!item) {
+          break
+        }
+        quoteLines.push(item[1])
+        index += 1
+      }
+      blocks.push({ type: "quote", lines: quoteLines })
+      continue
+    }
+
+    paragraph.push(line)
+    index += 1
+  }
+
+  flushParagraph()
+  return blocks
+}
+
+function renderMarkdownBlock(block: MarkdownBlock, index: number) {
+  switch (block.type) {
+    case "heading": {
+      const className = cn("font-semibold leading-snug", block.level <= 2 ? "text-base" : "text-sm")
+      if (block.level === 1) {
+        return <h1 key={index} className={className}>{renderInlineMarkdown(block.text, `h-${index}`)}</h1>
+      }
+      if (block.level === 2) {
+        return <h2 key={index} className={className}>{renderInlineMarkdown(block.text, `h-${index}`)}</h2>
+      }
+      return <h3 key={index} className={className}>{renderInlineMarkdown(block.text, `h-${index}`)}</h3>
+    }
+    case "quote":
+      return (
+        <blockquote key={index} className="border-l-2 border-muted-foreground/30 pl-3 text-muted-foreground">
+          {block.lines.map((line, lineIndex) => (
+            <div key={lineIndex}>{renderInlineMarkdown(line, `q-${index}-${lineIndex}`)}</div>
+          ))}
+        </blockquote>
+      )
+    case "ul":
+      return (
+        <ul key={index} className="list-disc space-y-1 pl-5">
+          {block.items.map((item, itemIndex) => (
+            <li key={itemIndex}>{renderInlineMarkdown(item, `ul-${index}-${itemIndex}`)}</li>
+          ))}
+        </ul>
+      )
+    case "ol":
+      return (
+        <ol key={index} className="list-decimal space-y-1 pl-5">
+          {block.items.map((item, itemIndex) => (
+            <li key={itemIndex}>{renderInlineMarkdown(item, `ol-${index}-${itemIndex}`)}</li>
+          ))}
+        </ol>
+      )
+    case "code":
+      return (
+        <div key={index} className="overflow-hidden rounded-md border bg-muted/50">
+          {block.language && <div className="border-b px-3 py-1 text-[11px] uppercase text-muted-foreground">{block.language}</div>}
+          <pre className="overflow-x-auto p-3 text-xs leading-relaxed">
+            <code>{block.text}</code>
+          </pre>
+        </div>
+      )
+    case "hr":
+      return <hr key={index} className="border-border" />
+    default:
+      return (
+        <p key={index}>
+          {block.text.split("\n").map((line, lineIndex) => (
+            <span key={lineIndex}>
+              {lineIndex > 0 && <br />}
+              {renderInlineMarkdown(line, `p-${index}-${lineIndex}`)}
+            </span>
+          ))}
+        </p>
+      )
+  }
+}
+
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const codePattern = /`([^`]+)`/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = codePattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(...renderLinksAndEmphasis(text.slice(lastIndex, match.index), `${keyPrefix}-${nodes.length}`))
+    }
+    nodes.push(
+      <code key={`${keyPrefix}-code-${match.index}`} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]">
+        {match[1]}
+      </code>
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) {
+    nodes.push(...renderLinksAndEmphasis(text.slice(lastIndex), `${keyPrefix}-${nodes.length}`))
+  }
+  return nodes
+}
+
+function renderLinksAndEmphasis(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const linkPattern = /\[([^\]]+)]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = linkPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(...renderEmphasis(text.slice(lastIndex, match.index), `${keyPrefix}-${nodes.length}`))
+    }
+    const href = safeMarkdownHref(match[2])
+    nodes.push(
+      href ? (
+        <a key={`${keyPrefix}-link-${match.index}`} href={href} target={isExternalHref(href) ? "_blank" : undefined} rel={isExternalHref(href) ? "noreferrer" : undefined} className="font-medium text-primary underline underline-offset-2">
+          {renderEmphasis(match[1], `${keyPrefix}-link-label-${match.index}`)}
+        </a>
+      ) : (
+        <span key={`${keyPrefix}-link-${match.index}`}>{renderEmphasis(match[1], `${keyPrefix}-link-label-${match.index}`)}</span>
+      )
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) {
+    nodes.push(...renderEmphasis(text.slice(lastIndex), `${keyPrefix}-${nodes.length}`))
+  }
+  return nodes
+}
+
+function renderEmphasis(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const emphasisPattern = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~]+~~)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = emphasisPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index))
+    }
+    const value = match[0]
+    const inner = value.replace(/^(\*\*|__|\*|_|~~)|(\*\*|__|\*|_|~~)$/g, "")
+    if (value.startsWith("**") || value.startsWith("__")) {
+      nodes.push(<strong key={`${keyPrefix}-strong-${match.index}`}>{inner}</strong>)
+    } else if (value.startsWith("~~")) {
+      nodes.push(<del key={`${keyPrefix}-del-${match.index}`}>{inner}</del>)
+    } else {
+      nodes.push(<em key={`${keyPrefix}-em-${match.index}`}>{inner}</em>)
+    }
+    lastIndex = match.index + value.length
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex))
+  }
+  return nodes
+}
+
+function safeMarkdownHref(value: string) {
+  const href = value.trim()
+  if (/^(https?:|mailto:)/i.test(href) || href.startsWith("/") || href.startsWith("#")) {
+    return href
+  }
+  return ""
+}
+
+function isExternalHref(href: string) {
+  return /^(https?:|mailto:)/i.test(href)
 }
 
 function readStoredSessions(storeKey = sessionsStoreKey, includeLegacy = true): ChatSession[] {
