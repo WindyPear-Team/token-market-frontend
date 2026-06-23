@@ -1,7 +1,9 @@
 import { useState } from "react"
+import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { TabTransition } from "@/components/layout/TabTransition"
 import {
   Table,
@@ -26,6 +28,19 @@ interface TokenLog {
   cost: string | number
 }
 
+interface APIKeyOption {
+  id: number
+  name: string
+  key_prefix: string
+}
+
+interface PaginatedResult<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
 interface PaymentOrder {
   order_no: string
   amount: string
@@ -45,32 +60,67 @@ interface CheckInRecord {
 
 type DetailTab = "calls" | "payments" | "checkIns"
 
+const pageSize = 20
+
 export default function Logs() {
   const { language, t } = useI18n()
   const copy = language === "zh" ? zhDetailsCopy : enDetailsCopy
   const [activeTab, setActiveTab] = useState<DetailTab>("calls")
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
+  const [apiKeyID, setAPIKeyID] = useState("")
+  const [callPage, setCallPage] = useState(1)
+  const [paymentPage, setPaymentPage] = useState(1)
+  const [checkInPage, setCheckInPage] = useState(1)
 
-  const { data: logs = [], isLoading: isLogsLoading } = useQuery<TokenLog[]>({
-    queryKey: ["logs", "user"],
+  const { data: apiKeys = [] } = useQuery<APIKeyOption[]>({
+    queryKey: ["api-keys", "log-filters"],
     queryFn: async () => {
-      const res = await api.get("/user/logs")
-      return Array.isArray(res.data) ? res.data : []
+      const res = await api.get("/user/api-keys")
+      return Array.isArray(res.data) ? res.data.map(normalizeAPIKeyOption) : []
     },
   })
-  const { data: paymentOrders = [], isLoading: isPaymentOrdersLoading } = useQuery<PaymentOrder[]>({
-    queryKey: ["payment-orders"],
+  const { data: logs = emptyPage<TokenLog>(callPage), isLoading: isLogsLoading } = useQuery<PaginatedResult<TokenLog>>({
+    queryKey: ["logs", "user", "paged", callPage, startDate, endDate, apiKeyID],
     queryFn: async () => {
-      const res = await api.get("/user/payment/orders")
-      return Array.isArray(res.data) ? res.data : []
+      const res = await api.get("/user/logs", { params: logQueryParams(callPage, startDate, endDate, apiKeyID) })
+      return paginatedResult<TokenLog>(res.data, callPage)
     },
   })
-  const { data: checkInRecords = [], isLoading: isCheckInRecordsLoading } = useQuery<CheckInRecord[]>({
-    queryKey: ["check-in-records"],
+  const { data: paymentOrders = emptyPage<PaymentOrder>(paymentPage), isLoading: isPaymentOrdersLoading } = useQuery<PaginatedResult<PaymentOrder>>({
+    queryKey: ["payment-orders", "paged", paymentPage, startDate, endDate],
     queryFn: async () => {
-      const res = await api.get("/user/check-in/records")
-      return Array.isArray(res.data) ? res.data : []
+      const res = await api.get("/user/payment/orders", { params: pageQueryParams(paymentPage, startDate, endDate) })
+      return paginatedResult<PaymentOrder>(res.data, paymentPage)
     },
   })
+  const { data: checkInRecords = emptyPage<CheckInRecord>(checkInPage), isLoading: isCheckInRecordsLoading } = useQuery<PaginatedResult<CheckInRecord>>({
+    queryKey: ["check-in-records", "paged", checkInPage, startDate, endDate],
+    queryFn: async () => {
+      const res = await api.get("/user/check-in/records", { params: pageQueryParams(checkInPage, startDate, endDate) })
+      return paginatedResult<CheckInRecord>(res.data, checkInPage)
+    },
+  })
+
+  const resetFilters = () => {
+    setStartDate("")
+    setEndDate("")
+    setAPIKeyID("")
+    setCallPage(1)
+    setPaymentPage(1)
+    setCheckInPage(1)
+  }
+
+  const setDateFilter = (field: "start" | "end", value: string) => {
+    if (field === "start") {
+      setStartDate(value)
+    } else {
+      setEndDate(value)
+    }
+    setCallPage(1)
+    setPaymentPage(1)
+    setCheckInPage(1)
+  }
 
   return (
     <div className="space-y-6">
@@ -92,133 +142,406 @@ export default function Logs() {
       </div>
 
       <TabTransition activeKey={activeTab} order={["calls", "payments", "checkIns"]}>
-        {activeTab === "calls" && <CallRecordsTable logs={logs} loading={isLogsLoading} t={t} />}
-        {activeTab === "payments" && <PaymentOrdersTable orders={paymentOrders} loading={isPaymentOrdersLoading} copy={copy} />}
-        {activeTab === "checkIns" && <CheckInRecordsTable records={checkInRecords} loading={isCheckInRecordsLoading} copy={copy} />}
+        {activeTab === "calls" && (
+          <CallRecordsTable
+            logs={logs}
+            loading={isLogsLoading}
+            t={t}
+            copy={copy}
+            apiKeys={apiKeys}
+            startDate={startDate}
+            endDate={endDate}
+            apiKeyID={apiKeyID}
+            onStartDateChange={(value) => setDateFilter("start", value)}
+            onEndDateChange={(value) => setDateFilter("end", value)}
+            onAPIKeyChange={(value) => {
+              setAPIKeyID(value)
+              setCallPage(1)
+            }}
+            onReset={resetFilters}
+            onPageChange={setCallPage}
+          />
+        )}
+        {activeTab === "payments" && (
+          <PaymentOrdersTable
+            orders={paymentOrders}
+            loading={isPaymentOrdersLoading}
+            copy={copy}
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={(value) => setDateFilter("start", value)}
+            onEndDateChange={(value) => setDateFilter("end", value)}
+            onReset={resetFilters}
+            onPageChange={setPaymentPage}
+          />
+        )}
+        {activeTab === "checkIns" && (
+          <CheckInRecordsTable
+            records={checkInRecords}
+            loading={isCheckInRecordsLoading}
+            copy={copy}
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={(value) => setDateFilter("start", value)}
+            onEndDateChange={(value) => setDateFilter("end", value)}
+            onReset={resetFilters}
+            onPageChange={setCheckInPage}
+          />
+        )}
       </TabTransition>
     </div>
   )
 }
 
-function CallRecordsTable({ logs, loading, t }: { logs: TokenLog[]; loading: boolean; t: ReturnType<typeof useI18n>["t"] }) {
+function CallRecordsTable({
+  logs,
+  loading,
+  t,
+  copy,
+  apiKeys,
+  startDate,
+  endDate,
+  apiKeyID,
+  onStartDateChange,
+  onEndDateChange,
+  onAPIKeyChange,
+  onReset,
+  onPageChange,
+}: {
+  logs: PaginatedResult<TokenLog>
+  loading: boolean
+  t: ReturnType<typeof useI18n>["t"]
+  copy: typeof zhDetailsCopy
+  apiKeys: APIKeyOption[]
+  startDate: string
+  endDate: string
+  apiKeyID: string
+  onStartDateChange: (value: string) => void
+  onEndDateChange: (value: string) => void
+  onAPIKeyChange: (value: string) => void
+  onReset: () => void
+  onPageChange: (page: number) => void
+}) {
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("common.time")}</TableHead>
-            <TableHead>{t("usage.apiKey")}</TableHead>
-            <TableHead>{t("usage.userChannel")}</TableHead>
-            <TableHead>{t("usage.upstreamChannel")}</TableHead>
-            <TableHead>{t("common.model")}</TableHead>
-            <TableHead>{t("common.tokens")}</TableHead>
-            <TableHead>{t("usage.cachedInput")}</TableHead>
-            <TableHead>{t("common.cost")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
+    <div className="space-y-3">
+      <DetailFilters
+        copy={copy}
+        startDate={startDate}
+        endDate={endDate}
+        onStartDateChange={onStartDateChange}
+        onEndDateChange={onEndDateChange}
+        onReset={onReset}
+        extra={
+          <label className="min-w-48 flex-1 space-y-1 text-sm">
+            <span className="text-muted-foreground">{copy.apiKeyFilter}</span>
+            <select
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={apiKeyID}
+              onChange={(event) => onAPIKeyChange(event.target.value)}
+            >
+              <option value="">{copy.allAPIKeys}</option>
+              {apiKeys.map((key) => (
+                <option key={key.id} value={key.id}>
+                  {key.name || copy.apiKeyFallback} {key.key_prefix ? `(${key.key_prefix})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        }
+      />
+      <div className="overflow-x-auto rounded-md border">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                {t("common.loading")}
-              </TableCell>
+              <TableHead>{t("common.time")}</TableHead>
+              <TableHead>{t("usage.apiKey")}</TableHead>
+              <TableHead>{t("usage.userChannel")}</TableHead>
+              <TableHead>{t("usage.upstreamChannel")}</TableHead>
+              <TableHead>{t("common.model")}</TableHead>
+              <TableHead>{t("common.tokens")}</TableHead>
+              <TableHead>{t("usage.cachedInput")}</TableHead>
+              <TableHead>{t("common.cost")}</TableHead>
             </TableRow>
-          ) : logs.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
-                {t("usage.noUsage")}
-              </TableCell>
-            </TableRow>
-          ) : (
-            logs.map((log) => (
-              <TableRow key={log.id}>
-                <TableCell>{formatDateTime(log.created_at)}</TableCell>
-                <TableCell>{log.api_key_id || "-"}</TableCell>
-                <TableCell>{log.user_channel_id || "-"}</TableCell>
-                <TableCell>{log.channel_id}</TableCell>
-                <TableCell>{log.model_name}</TableCell>
-                <TableCell>{log.input_tokens} / {log.output_tokens}</TableCell>
-                <TableCell>{log.cached_input_tokens || 0}</TableCell>
-                <TableCell>${log.cost}</TableCell>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  {t("common.loading")}
+                </TableCell>
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+            ) : logs.items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  {t("usage.noUsage")}
+                </TableCell>
+              </TableRow>
+            ) : (
+              logs.items.map((log) => (
+                <TableRow key={log.id}>
+                  <TableCell>{formatDateTime(log.created_at)}</TableCell>
+                  <TableCell>{log.api_key_id || "-"}</TableCell>
+                  <TableCell>{log.user_channel_id || "-"}</TableCell>
+                  <TableCell>{log.channel_id}</TableCell>
+                  <TableCell>{log.model_name}</TableCell>
+                  <TableCell>{log.input_tokens} / {log.output_tokens}</TableCell>
+                  <TableCell>{log.cached_input_tokens || 0}</TableCell>
+                  <TableCell>${log.cost}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <PaginationControls page={logs.page} pageSize={logs.page_size} total={logs.total} copy={copy} onPageChange={onPageChange} />
     </div>
   )
 }
 
-function PaymentOrdersTable({ orders, loading, copy }: { orders: PaymentOrder[]; loading: boolean; copy: typeof zhDetailsCopy }) {
+function PaymentOrdersTable({
+  orders,
+  loading,
+  copy,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onReset,
+  onPageChange,
+}: {
+  orders: PaginatedResult<PaymentOrder>
+  loading: boolean
+  copy: typeof zhDetailsCopy
+  startDate: string
+  endDate: string
+  onStartDateChange: (value: string) => void
+  onEndDateChange: (value: string) => void
+  onReset: () => void
+  onPageChange: (page: number) => void
+}) {
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{copy.orderNo}</TableHead>
-            <TableHead>{copy.amount}</TableHead>
-            <TableHead>{copy.rmbAmount}</TableHead>
-            <TableHead>{copy.method}</TableHead>
-            <TableHead>{copy.status}</TableHead>
-            <TableHead>{copy.createdAt}</TableHead>
-            <TableHead>{copy.paidAt}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{copy.loading}</TableCell></TableRow>
-          ) : orders.length === 0 ? (
-            <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{copy.noPaymentOrders}</TableCell></TableRow>
-          ) : (
-            orders.map((order) => (
-              <TableRow key={order.order_no}>
-                <TableCell className="font-mono text-xs">{order.order_no}</TableCell>
-                <TableCell>{order.amount}</TableCell>
-                <TableCell>{order.rmb_amount}</TableCell>
-                <TableCell>{paymentMethodLabel(order.method, copy)}</TableCell>
-                <TableCell>{paymentStatusLabel(order.status, copy)}</TableCell>
-                <TableCell>{order.created_at ? formatDateTime(order.created_at) : "-"}</TableCell>
-                <TableCell>{order.paid_at ? formatDateTime(order.paid_at) : "-"}</TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      <DetailFilters
+        copy={copy}
+        startDate={startDate}
+        endDate={endDate}
+        onStartDateChange={onStartDateChange}
+        onEndDateChange={onEndDateChange}
+        onReset={onReset}
+      />
+      <div className="overflow-x-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{copy.orderNo}</TableHead>
+              <TableHead>{copy.amount}</TableHead>
+              <TableHead>{copy.rmbAmount}</TableHead>
+              <TableHead>{copy.method}</TableHead>
+              <TableHead>{copy.status}</TableHead>
+              <TableHead>{copy.createdAt}</TableHead>
+              <TableHead>{copy.paidAt}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{copy.loading}</TableCell></TableRow>
+            ) : orders.items.length === 0 ? (
+              <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">{copy.noPaymentOrders}</TableCell></TableRow>
+            ) : (
+              orders.items.map((order) => (
+                <TableRow key={order.order_no}>
+                  <TableCell className="font-mono text-xs">{order.order_no}</TableCell>
+                  <TableCell>{order.amount}</TableCell>
+                  <TableCell>{order.rmb_amount}</TableCell>
+                  <TableCell>{paymentMethodLabel(order.method, copy)}</TableCell>
+                  <TableCell>{paymentStatusLabel(order.status, copy)}</TableCell>
+                  <TableCell>{order.created_at ? formatDateTime(order.created_at) : "-"}</TableCell>
+                  <TableCell>{order.paid_at ? formatDateTime(order.paid_at) : "-"}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <PaginationControls page={orders.page} pageSize={orders.page_size} total={orders.total} copy={copy} onPageChange={onPageChange} />
     </div>
   )
 }
 
-function CheckInRecordsTable({ records, loading, copy }: { records: CheckInRecord[]; loading: boolean; copy: typeof zhDetailsCopy }) {
+function CheckInRecordsTable({
+  records,
+  loading,
+  copy,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onReset,
+  onPageChange,
+}: {
+  records: PaginatedResult<CheckInRecord>
+  loading: boolean
+  copy: typeof zhDetailsCopy
+  startDate: string
+  endDate: string
+  onStartDateChange: (value: string) => void
+  onEndDateChange: (value: string) => void
+  onReset: () => void
+  onPageChange: (page: number) => void
+}) {
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{copy.date}</TableHead>
-            <TableHead>{copy.reward}</TableHead>
-            <TableHead>{copy.streak}</TableHead>
-            <TableHead>{copy.rewardKind}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">{copy.loading}</TableCell></TableRow>
-          ) : records.length === 0 ? (
-            <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">{copy.noCheckInRecords}</TableCell></TableRow>
-          ) : (
-            records.map((record) => (
-              <TableRow key={record.check_in_date}>
-                <TableCell>{record.check_in_date}</TableCell>
-                <TableCell>{record.reward_amount}</TableCell>
-                <TableCell>{copy.streakDays.replace("{days}", String(record.streak_days))}</TableCell>
-                <TableCell>{rewardKindLabel(record.reward_kind, copy)}</TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      <DetailFilters
+        copy={copy}
+        startDate={startDate}
+        endDate={endDate}
+        onStartDateChange={onStartDateChange}
+        onEndDateChange={onEndDateChange}
+        onReset={onReset}
+      />
+      <div className="overflow-x-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{copy.date}</TableHead>
+              <TableHead>{copy.reward}</TableHead>
+              <TableHead>{copy.streak}</TableHead>
+              <TableHead>{copy.rewardKind}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">{copy.loading}</TableCell></TableRow>
+            ) : records.items.length === 0 ? (
+              <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">{copy.noCheckInRecords}</TableCell></TableRow>
+            ) : (
+              records.items.map((record) => (
+                <TableRow key={record.check_in_date}>
+                  <TableCell>{record.check_in_date}</TableCell>
+                  <TableCell>{record.reward_amount}</TableCell>
+                  <TableCell>{copy.streakDays.replace("{days}", String(record.streak_days))}</TableCell>
+                  <TableCell>{rewardKindLabel(record.reward_kind, copy)}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <PaginationControls page={records.page} pageSize={records.page_size} total={records.total} copy={copy} onPageChange={onPageChange} />
     </div>
   )
+}
+
+function DetailFilters({
+  copy,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
+  onReset,
+  extra,
+}: {
+  copy: typeof zhDetailsCopy
+  startDate: string
+  endDate: string
+  onStartDateChange: (value: string) => void
+  onEndDateChange: (value: string) => void
+  onReset: () => void
+  extra?: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-card p-3 md:flex-row md:items-end">
+      <label className="min-w-40 flex-1 space-y-1 text-sm">
+        <span className="text-muted-foreground">{copy.startDate}</span>
+        <Input type="date" value={startDate} onChange={(event) => onStartDateChange(event.target.value)} />
+      </label>
+      <label className="min-w-40 flex-1 space-y-1 text-sm">
+        <span className="text-muted-foreground">{copy.endDate}</span>
+        <Input type="date" value={endDate} onChange={(event) => onEndDateChange(event.target.value)} />
+      </label>
+      {extra}
+      <Button variant="outline" onClick={onReset}>{copy.resetFilters}</Button>
+    </div>
+  )
+}
+
+function PaginationControls({
+  page,
+  pageSize,
+  total,
+  copy,
+  onPageChange,
+}: {
+  page: number
+  pageSize: number
+  total: number
+  copy: typeof zhDetailsCopy
+  onPageChange: (page: number) => void
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  return (
+    <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        {copy.pageSummary
+          .replace("{page}", String(page))
+          .replace("{totalPages}", String(totalPages))
+          .replace("{total}", String(total))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+          {copy.previousPage}
+        </Button>
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+          {copy.nextPage}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function pageQueryParams(page: number, startDate: string, endDate: string) {
+  return {
+    page,
+    page_size: pageSize,
+    ...(startDate ? { start_time: startDate } : {}),
+    ...(endDate ? { end_time: endDate } : {}),
+  }
+}
+
+function logQueryParams(page: number, startDate: string, endDate: string, apiKeyID: string) {
+  return {
+    ...pageQueryParams(page, startDate, endDate),
+    ...(apiKeyID ? { api_key_id: apiKeyID } : {}),
+  }
+}
+
+function paginatedResult<T>(data: unknown, page: number): PaginatedResult<T> {
+  if (Array.isArray(data)) {
+    return { items: data as T[], total: data.length, page, page_size: pageSize }
+  }
+  if (data && typeof data === "object") {
+    const item = data as { items?: unknown; total?: unknown; page?: unknown; page_size?: unknown }
+    return {
+      items: Array.isArray(item.items) ? item.items as T[] : [],
+      total: typeof item.total === "number" ? item.total : 0,
+      page: typeof item.page === "number" ? item.page : page,
+      page_size: typeof item.page_size === "number" ? item.page_size : pageSize,
+    }
+  }
+  return emptyPage<T>(page)
+}
+
+function emptyPage<T>(page: number): PaginatedResult<T> {
+  return { items: [], total: 0, page, page_size: pageSize }
+}
+
+function normalizeAPIKeyOption(value: unknown): APIKeyOption {
+  const item = value && typeof value === "object" ? value as Partial<APIKeyOption> : {}
+  return {
+    id: Number(item.id || 0),
+    name: typeof item.name === "string" ? item.name : "",
+    key_prefix: typeof item.key_prefix === "string" ? item.key_prefix : "",
+  }
 }
 
 function paymentMethodLabel(method: string, copy: typeof zhDetailsCopy) {
@@ -296,6 +619,15 @@ const zhDetailsCopy = {
   noCheckInRecords: "暂无签到记录",
   streakDays: "连续 {days} 天",
   loading: "加载中...",
+  startDate: "开始日期",
+  endDate: "结束日期",
+  resetFilters: "重置",
+  apiKeyFilter: "API Key",
+  allAPIKeys: "全部 API Key",
+  apiKeyFallback: "API Key",
+  previousPage: "上一页",
+  nextPage: "下一页",
+  pageSummary: "第 {page} / {totalPages} 页，共 {total} 条",
   alipay: "支付宝",
   wxpay: "微信支付",
   paid: "已支付",
@@ -326,6 +658,15 @@ const enDetailsCopy: typeof zhDetailsCopy = {
   noCheckInRecords: "No check-in records",
   streakDays: "{days} day streak",
   loading: "Loading...",
+  startDate: "Start date",
+  endDate: "End date",
+  resetFilters: "Reset",
+  apiKeyFilter: "API key",
+  allAPIKeys: "All API keys",
+  apiKeyFallback: "API key",
+  previousPage: "Previous",
+  nextPage: "Next",
+  pageSummary: "Page {page} of {totalPages}, {total} records",
   alipay: "Alipay",
   wxpay: "WeChat Pay",
   paid: "Paid",

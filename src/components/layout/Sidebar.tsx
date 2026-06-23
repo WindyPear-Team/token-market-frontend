@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { PublicSettings } from "@/lib/public-settings"
-import { chatPathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
+import { chatPathForSettings, imagePathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
 
 interface CurrentUser {
@@ -72,8 +72,17 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
   })
   const publicSettings = withPublicSettingsDefaults(settings)
   const chatPath = chatPathForSettings(publicSettings)
+  const imagePath = imagePathForSettings(publicSettings)
   const visibleUserItems = userMenuItems
-    .map((item) => (item.labelKey === "nav.chat" ? { ...item, path: chatPath } : item))
+    .map((item) => {
+      if (item.labelKey === "nav.chat") {
+        return { ...item, path: chatPath }
+      }
+      if (item.labelKey === "nav.images") {
+        return { ...item, path: imagePath }
+      }
+      return item
+    })
     .filter((item) => publicSettings[item.settingKey] !== false)
   const visibleAdminItems = adminMenuItems.filter((item) => publicSettings[item.settingKey] !== false)
 

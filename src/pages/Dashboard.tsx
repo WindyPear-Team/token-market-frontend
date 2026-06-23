@@ -194,13 +194,21 @@ export default function Dashboard() {
 
 function userCards(t: ReturnType<typeof useI18n>["t"], currencyDisplayName: string, stats?: UserStats, user?: CurrentUser): StatCard[] {
   return [
-    { title: t("common.balance"), value: `${currencyDisplayName}${stats?.balance ?? user?.balance ?? 0}`, icon: CreditCard, color: "text-blue-500" },
+    { title: t("common.balance"), value: `${currencyDisplayName}${formatMoney(stats?.balance ?? user?.balance ?? 0)}`, icon: CreditCard, color: "text-blue-500" },
     { title: t("dashboard.todayRequests"), value: stats?.today_requests || 0, icon: Activity, color: "text-green-500" },
     { title: t("dashboard.totalRequests"), value: stats?.total_requests || 0, icon: Database, color: "text-purple-500" },
     { title: t("dashboard.rpm"), value: stats?.rpm || 0, icon: BarChart3, color: "text-cyan-500" },
     { title: t("dashboard.tpm"), value: stats?.tpm || 0, icon: LineChart, color: "text-pink-500" },
-    { title: t("dashboard.totalCost"), value: `${currencyDisplayName}${stats?.total_cost || 0}`, icon: DollarSign, color: "text-yellow-500" },
+    { title: t("dashboard.totalCost"), value: `${currencyDisplayName}${formatMoney(stats?.total_cost || 0)}`, icon: DollarSign, color: "text-yellow-500" },
   ]
+}
+
+function formatMoney(value: string | number) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) {
+    return "0.00"
+  }
+  return amount.toFixed(2)
 }
 
 function StatusIcon({ status }: { status: string }) {
