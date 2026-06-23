@@ -7,6 +7,7 @@ import Agents from "./Agents"
 import Skills from "./Skills"
 import AdvancedChatMCP from "./AdvancedChatMCP"
 import Images from "./Images"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { Button } from "@/components/ui/button"
 import { PageTransition } from "@/components/layout/PageTransition"
 import api from "@/lib/api"
@@ -121,7 +122,7 @@ export default function AdvancedChat() {
 
 function AdvancedChatSidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
   const location = useLocation()
-  const { language, setLanguage, t } = useI18n()
+  const { t } = useI18n()
   const items = [
     { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" },
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
@@ -151,22 +152,7 @@ function AdvancedChatSidebar({ className, onNavigate }: { className?: string; on
         </div>
       </nav>
       <div className="shrink-0 border-t p-4">
-        <div className="flex rounded-md border p-1 text-sm">
-          <button
-            type="button"
-            className={cn("flex-1 rounded px-2 py-1", language === "zh" && "bg-primary text-primary-foreground")}
-            onClick={() => setLanguage("zh")}
-          >
-            {t("settings.chinese")}
-          </button>
-          <button
-            type="button"
-            className={cn("flex-1 rounded px-2 py-1", language === "en" && "bg-primary text-primary-foreground")}
-            onClick={() => setLanguage("en")}
-          >
-            {t("settings.english")}
-          </button>
-        </div>
+        <LanguageSwitcher placement="top" />
       </div>
     </aside>
   )

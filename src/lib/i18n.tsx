@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState } from "react"
 import type { ReactNode } from "react"
 
-type Language = "zh" | "en"
+export type Language = "zh" | "en"
 
 const languageStorageKey = "language"
 
@@ -31,6 +31,12 @@ const translations = {
     "common.email": "邮箱",
     "common.username": "用户名",
     "common.language": "语言",
+    "language.select": "选择语言",
+    "language.current": "当前语言",
+    "language.chinese": "中文",
+    "language.english": "English",
+    "language.chineseDescription": "简体中文界面",
+    "language.englishDescription": "English interface",
     "premium.requiredTitle": "需要高级版",
     "premium.advancedChatRequired": "高级独立聊天属于高级版功能，当前版本不可用。",
     "premium.requiredAction": "返回基础聊天",
@@ -51,6 +57,11 @@ const translations = {
     "nav.models": "模型配置",
     "nav.system": "系统管理",
     "nav.users": "用户",
+    "nav.systemGeneral": "系统设置",
+    "nav.systemAuth": "认证邮件",
+    "nav.systemContent": "内容导航",
+    "nav.systemOperations": "运营工具",
+    "nav.systemAdvancedChat": "高级聊天",
     "login.description": "AI 网关控制台",
     "login.button": "通过 OIDC 登录",
     "dashboard.title": "概览",
@@ -242,6 +253,12 @@ const translations = {
     "common.email": "Email",
     "common.username": "Username",
     "common.language": "Language",
+    "language.select": "Select language",
+    "language.current": "Current language",
+    "language.chinese": "中文",
+    "language.english": "English",
+    "language.chineseDescription": "Simplified Chinese interface",
+    "language.englishDescription": "English interface",
     "premium.requiredTitle": "Premium edition required",
     "premium.advancedChatRequired": "Advanced standalone chat requires premium edition and is unavailable in the current edition.",
     "premium.requiredAction": "Back to basic chat",
@@ -262,6 +279,11 @@ const translations = {
     "nav.models": "Model Config",
     "nav.system": "System",
     "nav.users": "Users",
+    "nav.systemGeneral": "General",
+    "nav.systemAuth": "Auth & Email",
+    "nav.systemContent": "Content & Navigation",
+    "nav.systemOperations": "Operations",
+    "nav.systemAdvancedChat": "Advanced Chat",
     "login.description": "AI gateway console",
     "login.button": "Sign in with OIDC",
     "dashboard.title": "Dashboard",

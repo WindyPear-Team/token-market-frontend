@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { KeyRound, LogOut } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { useState } from "react"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
@@ -45,7 +46,7 @@ interface PasskeyCredential {
 
 export default function Settings() {
   const navigate = useNavigate()
-  const { language, setLanguage, t } = useI18n()
+  const { language, t } = useI18n()
   const copy = language === "zh" ? zhSettingsCopy : enSettingsCopy
   const queryClient = useQueryClient()
   const [bindStatus, setBindStatus] = useState("")
@@ -210,22 +211,7 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-muted-foreground">{t("settings.languageSubtitle")}</div>
-            <div className="flex rounded-md border p-1">
-              <Button
-                variant={language === "zh" ? "default" : "ghost"}
-                className="flex-1"
-                onClick={() => setLanguage("zh")}
-              >
-                {t("settings.chinese")}
-              </Button>
-              <Button
-                variant={language === "en" ? "default" : "ghost"}
-                className="flex-1"
-                onClick={() => setLanguage("en")}
-              >
-                {t("settings.english")}
-              </Button>
-            </div>
+            <LanguageSwitcher placement="bottom" />
           </CardContent>
         </Card>
 

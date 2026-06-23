@@ -2,8 +2,10 @@ import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashb
 import type { LucideIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
+import type { TranslationKey } from "@/lib/i18n"
 import type { PublicSettings } from "@/lib/public-settings"
 import { chatPathForSettings, imagePathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
@@ -22,16 +24,15 @@ interface MenuItem {
 
 interface SystemSubItem {
   path: string
-  zh: string
-  en: string
+  labelKey: TranslationKey
 }
 
 const systemSubItems: SystemSubItem[] = [
-  { path: "/dashboard/admin/general", zh: "系统设置", en: "General" },
-  { path: "/dashboard/admin/auth", zh: "认证邮件", en: "Auth & Email" },
-  { path: "/dashboard/admin/content", zh: "内容导航", en: "Content & Navigation" },
-  { path: "/dashboard/admin/operations", zh: "运营工具", en: "Operations" },
-  { path: "/dashboard/admin/advanced-chat", zh: "高级聊天", en: "Advanced Chat" },
+  { path: "/dashboard/admin/general", labelKey: "nav.systemGeneral" },
+  { path: "/dashboard/admin/auth", labelKey: "nav.systemAuth" },
+  { path: "/dashboard/admin/content", labelKey: "nav.systemContent" },
+  { path: "/dashboard/admin/operations", labelKey: "nav.systemOperations" },
+  { path: "/dashboard/admin/advanced-chat", labelKey: "nav.systemAdvancedChat" },
 ]
 
 const userMenuItems: MenuItem[] = [
@@ -55,7 +56,6 @@ const adminMenuItems: MenuItem[] = [
 
 export function Sidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
   const location = useLocation()
-  const { language, setLanguage, t } = useI18n()
   const { data: user } = useQuery<CurrentUser>({
     queryKey: ["me"],
     queryFn: async () => {
@@ -102,7 +102,6 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
                   item={item}
                   active={isSidebarItemActive(location.pathname, item)}
                   currentPath={location.pathname}
-                  language={language}
                   onNavigate={onNavigate}
                 />
               ))}
@@ -111,22 +110,7 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
         </div>
       </nav>
       <div className="shrink-0 border-t p-4">
-        <div className="flex rounded-md border p-1 text-sm">
-          <button
-            type="button"
-            className={cn("flex-1 rounded px-2 py-1", language === "zh" && "bg-primary text-primary-foreground")}
-            onClick={() => setLanguage("zh")}
-          >
-            {t("settings.chinese")}
-          </button>
-          <button
-            type="button"
-            className={cn("flex-1 rounded px-2 py-1", language === "en" && "bg-primary text-primary-foreground")}
-            onClick={() => setLanguage("en")}
-          >
-            {t("settings.english")}
-          </button>
-        </div>
+        <LanguageSwitcher placement="top" />
       </div>
     </div>
   )
@@ -136,13 +120,11 @@ function SidebarLink({
   item,
   active,
   currentPath = "",
-  language = "zh",
   onNavigate,
 }: {
   item: MenuItem
   active: boolean
   currentPath?: string
-  language?: "zh" | "en"
   onNavigate?: () => void
 }) {
   const { t } = useI18n()
@@ -175,7 +157,7 @@ function SidebarLink({
                   childActive ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                {language === "zh" ? child.zh : child.en}
+                {t(child.labelKey)}
               </Link>
             )
           })}
