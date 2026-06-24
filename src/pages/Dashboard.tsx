@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { PageComponentSlots } from "@/components/layout/PageComponentSlots"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import api from "@/lib/api"
 import { DASHBOARD_PAGE_KEY, defaultDashboardComponents } from "@/lib/page-layouts"
 import { useI18n } from "@/lib/i18n"
@@ -30,6 +30,8 @@ export default function Dashboard() {
 
       <PageTitleSlot />
       <PageComponentSlots pageKey={DASHBOARD_PAGE_KEY} slotKey="main" defaultItems={defaultDashboardComponents} />
+      <PageInlineSlot slotKey="primary" />
+      <PageInlineSlot slotKey="secondary" />
     </div>
   )
 }

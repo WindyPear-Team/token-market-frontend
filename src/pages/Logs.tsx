@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import { TabTransition } from "@/components/layout/TabTransition"
 import {
   Table,
@@ -143,6 +143,7 @@ export default function Logs() {
         </Button>
       </div>
 
+      <PageInlineSlot slotKey="primary" />
       <TabTransition activeKey={activeTab} order={["calls", "payments", "checkIns"]}>
         {activeTab === "calls" && (
           <CallRecordsTable
@@ -191,6 +192,7 @@ export default function Logs() {
           />
         )}
       </TabTransition>
+      <PageInlineSlot slotKey="secondary" />
     </div>
   )
 }

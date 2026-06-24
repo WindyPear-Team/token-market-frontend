@@ -3,7 +3,7 @@ import type { Dispatch, ReactNode, SetStateAction } from "react"
 import { LayoutTemplate, Plus, RotateCcw, Save, X } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
-import { defaultWidthForPageComponent, pageComponentLabel, pageComponentPresets } from "@/components/dashboard/DashboardWidgets"
+import { defaultConfigForPageComponent, defaultWidthForPageComponent, pageComponentLabel, pageComponentPresets } from "@/components/dashboard/DashboardWidgets"
 import { useToast } from "@/components/ui/toast"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
@@ -17,7 +17,7 @@ import {
   parsePageLayouts,
   serializePageLayouts,
 } from "@/lib/page-layouts"
-import type { PageComponentItem, PageComponentWidth, PageLayouts, PageSlotKey } from "@/lib/page-layouts"
+import type { PageComponentConfig, PageComponentItem, PageComponentWidth, PageLayouts, PageSlotKey } from "@/lib/page-layouts"
 
 interface PageLayoutEditorProviderProps {
   children: ReactNode
@@ -43,6 +43,7 @@ interface PageLayoutEditorContextValue {
   moveComponentTo: (pageKey: string, fromSlotKey: PageSlotKey, fromIndex: number, toSlotKey: PageSlotKey, toIndex: number) => void
   resetCurrentPage: () => void
   saveEditing: () => void
+  updateComponentConfig: (pageKey: string, slotKey: PageSlotKey, id: string, config: PageComponentConfig) => void
   updateComponentWidth: (pageKey: string, slotKey: PageSlotKey, id: string, width: PageComponentWidth) => void
 }
 
@@ -100,7 +101,7 @@ export function PageLayoutEditorProvider({
     addComponent: (pageKey, slotKey) => {
       updateSlot(setDraftLayouts, pageKey, slotKey, (items) => [
         ...items,
-        newPageComponentItem(selectedType, defaultWidthForPageComponent(selectedType)),
+        newPageComponentItem(selectedType, defaultWidthForPageComponent(selectedType), defaultConfigForPageComponent(selectedType)),
       ])
     },
     cancelEditing: () => {
@@ -164,6 +165,9 @@ export function PageLayoutEditorProvider({
       })
     },
     saveEditing: () => saveMutation.mutate(),
+    updateComponentConfig: (pageKey, slotKey, id, config) => {
+      updateSlot(setDraftLayouts, pageKey, slotKey, (items) => items.map((item) => (item.id === id ? { ...item, config } : item)))
+    },
     updateComponentWidth: (pageKey, slotKey, id, width) => {
       updateSlot(setDraftLayouts, pageKey, slotKey, (items) => items.map((item) => (item.id === id ? { ...item, width } : item)))
     },
@@ -259,6 +263,8 @@ function updateSlot(
 function slotsForPage(pageKey: string, copy: LayoutEditorCopy): Array<{ key: PageSlotKey; label: string; shortLabel: string }> {
   const baseSlots: Array<{ key: PageSlotKey; label: string; shortLabel: string }> = [
     { key: "before", label: copy.positionBefore, shortLabel: copy.addBefore },
+    { key: "primary", label: copy.positionPrimary, shortLabel: copy.addPrimary },
+    { key: "secondary", label: copy.positionSecondary, shortLabel: copy.addSecondary },
     { key: "after", label: copy.positionAfter, shortLabel: copy.addAfter },
   ]
   if (pageKeyFromPathname(pageKey) !== DASHBOARD_PAGE_KEY) {
@@ -275,6 +281,11 @@ function pageLabelForKey(pageKey: string, copy: LayoutEditorCopy) {
 function pageChoices(copy: LayoutEditorCopy) {
   return [
     { key: "/dashboard", label: copy.pageDashboard },
+    { key: "/chat", label: copy.pageChat },
+    { key: "/chat/images", label: copy.pageImages },
+    { key: "/chat/agents", label: copy.pageAgents },
+    { key: "/chat/skills", label: copy.pageSkills },
+    { key: "/chat/mcp", label: copy.pageMCP },
     { key: "/dashboard/data-board", label: copy.pageDataBoard },
     { key: "/dashboard/logs", label: copy.pageLogs },
     { key: "/dashboard/wallet", label: copy.pageWallet },
@@ -299,6 +310,8 @@ interface LayoutEditorCopy {
   addBefore: string
   addComponent: string
   addMain: string
+  addPrimary: string
+  addSecondary: string
   component: string
   delete: string
   emptySlot: string
@@ -306,6 +319,7 @@ interface LayoutEditorCopy {
   moveDown: string
   moveUp: string
   pageAdminOverview: string
+  pageAgents: string
   pageApiKeys: string
   pageChannels: string
   pageChat: string
@@ -314,13 +328,17 @@ interface LayoutEditorCopy {
   pageImages: string
   pageLogs: string
   pageModels: string
+  pageMCP: string
   pageSettings: string
+  pageSkills: string
   pageSystem: string
   pageUsers: string
   pageWallet: string
   positionAfter: string
   positionBefore: string
   positionMain: string
+  positionPrimary: string
+  positionSecondary: string
   reset: string
   save: string
   saved: string
@@ -338,6 +356,8 @@ const zhCopy: LayoutEditorCopy = {
   addBefore: "插到上方",
   addComponent: "添加组件",
   addMain: "插到首页",
+  addPrimary: "插到中部",
+  addSecondary: "插到后段",
   component: "预设组件",
   delete: "删除",
   emptySlot: "点击添加，把选中的组件插到这里",
@@ -345,6 +365,7 @@ const zhCopy: LayoutEditorCopy = {
   moveDown: "下移",
   moveUp: "上移",
   pageAdminOverview: "管理员概览",
+  pageAgents: "智能体",
   pageApiKeys: "API 密钥",
   pageChannels: "渠道",
   pageChat: "聊天",
@@ -353,13 +374,17 @@ const zhCopy: LayoutEditorCopy = {
   pageImages: "AI 绘画",
   pageLogs: "明细",
   pageModels: "模型",
+  pageMCP: "MCP",
   pageSettings: "设置",
+  pageSkills: "技能",
   pageSystem: "系统设置",
   pageUsers: "用户",
   pageWallet: "钱包",
   positionAfter: "内容下方",
   positionBefore: "内容上方",
   positionMain: "首页主体",
+  positionPrimary: "中部位置",
+  positionSecondary: "后段位置",
   reset: "重置本页",
   save: "保存",
   saved: "页面组件已保存",
@@ -377,6 +402,8 @@ const enCopy: LayoutEditorCopy = {
   addBefore: "Add above",
   addComponent: "Add component",
   addMain: "Add to dashboard",
+  addPrimary: "Add middle",
+  addSecondary: "Add lower",
   component: "Preset component",
   delete: "Delete",
   emptySlot: "Click add to place the selected component here",
@@ -384,6 +411,7 @@ const enCopy: LayoutEditorCopy = {
   moveDown: "Move down",
   moveUp: "Move up",
   pageAdminOverview: "Admin overview",
+  pageAgents: "Agents",
   pageApiKeys: "API keys",
   pageChannels: "Channels",
   pageChat: "Chat",
@@ -392,13 +420,17 @@ const enCopy: LayoutEditorCopy = {
   pageImages: "AI images",
   pageLogs: "Details",
   pageModels: "Models",
+  pageMCP: "MCP",
   pageSettings: "Settings",
+  pageSkills: "Skills",
   pageSystem: "System settings",
   pageUsers: "Users",
   pageWallet: "Wallet",
   positionAfter: "Below content",
   positionBefore: "Above content",
   positionMain: "Dashboard body",
+  positionPrimary: "Middle position",
+  positionSecondary: "Lower position",
   reset: "Reset page",
   save: "Save",
   saved: "Page components saved",

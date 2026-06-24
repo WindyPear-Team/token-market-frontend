@@ -6,7 +6,7 @@ import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import {
   Dialog,
   DialogContent,
@@ -354,6 +354,7 @@ export default function Models() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="primary" />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>{t("models.configCard")}</CardTitle>
@@ -419,6 +420,7 @@ export default function Models() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="secondary" />
       <ModelDialog
         model={editingModel}
         onClose={() => setEditingModel(null)}

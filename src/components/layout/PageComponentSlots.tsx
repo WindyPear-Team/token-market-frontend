@@ -7,7 +7,7 @@ import { PageComponent, pageComponentLabel, pageComponentPresets } from "@/compo
 import { usePageLayoutEditor } from "@/components/layout/PageLayoutEditor"
 import api from "@/lib/api"
 import { DASHBOARD_PAGE_KEY, getPageSlotItems, pageKeyFromPathname, parsePageLayouts } from "@/lib/page-layouts"
-import type { PageComponentItem, PageComponentWidth, PageSlotKey } from "@/lib/page-layouts"
+import type { PageComponentConfig, PageComponentItem, PageComponentWidth, PageSlotKey } from "@/lib/page-layouts"
 import type { PublicSettings } from "@/lib/public-settings"
 import { withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
@@ -66,7 +66,7 @@ export function PageComponentSlots({ pageKey, slotKey, defaultItems = [], classN
     <div className={cn("grid gap-6 lg:grid-cols-6", className)}>
       {items.map((item) => (
         <div key={item.id} className={cn("min-w-0", widthClasses[item.width || "half"])}>
-          <PageComponent type={item.type} />
+          <PageComponent item={item} />
         </div>
       ))}
     </div>
@@ -134,6 +134,10 @@ function EditableSlot({
               draggable
               className={cn("min-w-0 cursor-grab active:cursor-grabbing", widthClasses[item.width || "half"])}
               onDragStart={(event) => {
+                if ((event.target as HTMLElement).closest("[data-no-drag]")) {
+                  event.preventDefault()
+                  return
+                }
                 event.dataTransfer.effectAllowed = "move"
                 event.dataTransfer.setData(componentDragType, JSON.stringify({ pageKey, slotKey, index }))
               }}
@@ -185,8 +189,14 @@ function EditableSlot({
                     </IconButton>
                   </div>
                 </div>
+                <ComponentConfigEditor
+                  editor={editor}
+                  item={item}
+                  pageKey={pageKey}
+                  slotKey={slotKey}
+                />
                 <div className="pointer-events-none">
-                  <PageComponent type={item.type} />
+                  <PageComponent item={item} />
                 </div>
               </div>
             </div>
@@ -194,6 +204,87 @@ function EditableSlot({
         </div>
       )}
     </section>
+  )
+}
+
+function ComponentConfigEditor({
+  editor,
+  item,
+  pageKey,
+  slotKey,
+}: {
+  editor: NonNullable<ReturnType<typeof usePageLayoutEditor>>
+  item: PageComponentItem
+  pageKey: string
+  slotKey: PageSlotKey
+}) {
+  if (item.type !== "custom_html" && item.type !== "iframe") {
+    return null
+  }
+
+  const labels = editor.language === "zh" ? zhConfigLabels : enConfigLabels
+  const config = item.config || {}
+  const updateConfig = (patch: PageComponentConfig) => {
+    editor.updateComponentConfig(pageKey, slotKey, item.id, { ...config, ...patch })
+  }
+
+  return (
+    <div data-no-drag className="mb-2 grid gap-3 rounded-md border bg-muted/30 p-3">
+      <label className="grid gap-1 text-xs font-medium">
+        <span>{labels.title}</span>
+        <input
+          className={configInputClass}
+          value={stringConfig(config, "title")}
+          onChange={(event) => updateConfig({ title: event.target.value })}
+        />
+      </label>
+      {item.type === "custom_html" ? (
+        <>
+          <label className="grid gap-1 text-xs font-medium">
+            <span>{labels.height}</span>
+            <input
+              className={configInputClass}
+              type="number"
+              min="80"
+              max="1200"
+              value={stringConfig(config, "height")}
+              onChange={(event) => updateConfig({ height: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium">
+            <span>{labels.html}</span>
+            <textarea
+              className={cn(configInputClass, "min-h-32 py-2 font-mono")}
+              value={stringConfig(config, "html")}
+              onChange={(event) => updateConfig({ html: event.target.value })}
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          <label className="grid gap-1 text-xs font-medium">
+            <span>{labels.url}</span>
+            <input
+              className={configInputClass}
+              value={stringConfig(config, "iframe_url")}
+              placeholder="https://example.com"
+              onChange={(event) => updateConfig({ iframe_url: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium">
+            <span>{labels.height}</span>
+            <input
+              className={configInputClass}
+              type="number"
+              min="80"
+              max="1200"
+              value={stringConfig(config, "iframe_height")}
+              onChange={(event) => updateConfig({ iframe_height: event.target.value })}
+            />
+          </label>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -217,6 +308,28 @@ function IconButton({
   )
 }
 
+const configInputClass =
+  "w-full rounded-md border border-input bg-background px-3 text-sm font-normal ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+
+const zhConfigLabels = {
+  height: "高度",
+  html: "HTML",
+  title: "标题",
+  url: "iframe 地址",
+}
+
+const enConfigLabels = {
+  height: "Height",
+  html: "HTML",
+  title: "Title",
+  url: "Iframe URL",
+}
+
+function stringConfig(config: PageComponentConfig, key: string) {
+  const value = config[key]
+  return typeof value === "string" || typeof value === "number" ? String(value) : ""
+}
+
 function slotLabel(pageKey: string, slotKey: PageSlotKey, copy: NonNullable<ReturnType<typeof usePageLayoutEditor>>["copy"]) {
   if (pageKeyFromPathname(pageKey) === DASHBOARD_PAGE_KEY && slotKey === "main") {
     return copy.positionMain
@@ -226,6 +339,12 @@ function slotLabel(pageKey: string, slotKey: PageSlotKey, copy: NonNullable<Retu
   }
   if (slotKey === "after") {
     return copy.positionAfter
+  }
+  if (slotKey === "primary") {
+    return copy.positionPrimary
+  }
+  if (slotKey === "secondary") {
+    return copy.positionSecondary
   }
   return copy.positionMain
 }

@@ -5,6 +5,7 @@ import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import { useToast } from "@/components/ui/toast"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -199,6 +200,7 @@ export default function Agents() {
         </Button>
       </div>
 
+      <PageTitleSlot />
       <Card>
         <CardHeader>
           <CardTitle>{t("advancedChat.agents.list")}</CardTitle>
@@ -237,6 +239,8 @@ export default function Agents() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="primary" />
+      <PageInlineSlot slotKey="secondary" />
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>

@@ -5,9 +5,11 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  Code2,
   CreditCard,
   Database,
   DollarSign,
+  Globe2,
   KeyRound,
   LineChart,
   Megaphone,
@@ -23,7 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
-import type { PageComponentWidth } from "@/lib/page-layouts"
+import type { PageComponentConfig, PageComponentItem, PageComponentWidth } from "@/lib/page-layouts"
 import type { PublicSettings } from "@/lib/public-settings"
 import { chatPathForSettings, imagePathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
@@ -120,10 +122,26 @@ export const pageComponentPresets: PageComponentPreset[] = [
     defaultWidth: "third",
     icon: ArrowRight,
   },
+  {
+    type: "custom_html",
+    label: { zh: "HTML 小组件", en: "HTML widget" },
+    description: { zh: "运行管理员填写的 HTML 片段。", en: "Runs an admin-provided HTML snippet." },
+    defaultWidth: "full",
+    icon: Code2,
+  },
+  {
+    type: "iframe",
+    label: { zh: "iframe 小组件", en: "Iframe widget" },
+    description: { zh: "嵌入一个外部或站内页面。", en: "Embeds an external or internal page." },
+    defaultWidth: "full",
+    icon: Globe2,
+  },
 ]
 
-export function PageComponent({ type }: { type: string }) {
-  switch (type) {
+export function PageComponent({ config, item, type }: { config?: PageComponentConfig; item?: PageComponentItem; type?: string }) {
+  const componentType = item?.type || type || ""
+  const componentConfig = item?.config || config || {}
+  switch (componentType) {
     case "dashboard_stats":
       return <DashboardStatsWidget />
     case "announcements":
@@ -134,6 +152,10 @@ export function PageComponent({ type }: { type: string }) {
       return <AccountSummaryWidget />
     case "quick_links":
       return <QuickLinksWidget />
+    case "custom_html":
+      return <CustomHTMLWidget config={componentConfig} />
+    case "iframe":
+      return <IframeWidget config={componentConfig} />
     default:
       return null
   }
@@ -157,6 +179,100 @@ export function pageComponentDescription(type: string, language: string) {
 
 export function defaultWidthForPageComponent(type: string): PageComponentWidth {
   return pageComponentPresets.find((item) => item.type === type)?.defaultWidth || "half"
+}
+
+export function defaultConfigForPageComponent(type: string): PageComponentConfig {
+  if (type === "custom_html") {
+    return {
+      title: "HTML widget",
+      html: "<div style=\"font-family: system-ui; padding: 16px;\"><strong>Custom HTML</strong><p>Edit this widget in visual editing mode.</p></div>",
+      height: "240",
+    }
+  }
+  if (type === "iframe") {
+    return {
+      title: "Iframe widget",
+      iframe_url: "",
+      iframe_height: "360",
+    }
+  }
+  return {}
+}
+
+function CustomHTMLWidget({ config }: { config: PageComponentConfig }) {
+  const { language } = useI18n()
+  const title = stringConfig(config, "title")
+  const html = stringConfig(config, "html")
+  const height = sizeConfig(config, "height", 240)
+  const emptyText = language === "zh" ? "HTML 内容为空" : "No HTML content"
+
+  return (
+    <Card className="h-full overflow-hidden">
+      {title && (
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={title ? undefined : "pt-6"}>
+        {html ? (
+          <iframe
+            title={title || "HTML widget"}
+            srcDoc={html}
+            sandbox="allow-forms allow-popups allow-scripts"
+            className="w-full rounded-md border bg-background"
+            style={{ height }}
+          />
+        ) : (
+          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">{emptyText}</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function IframeWidget({ config }: { config: PageComponentConfig }) {
+  const { language } = useI18n()
+  const title = stringConfig(config, "title")
+  const url = stringConfig(config, "iframe_url")
+  const height = sizeConfig(config, "iframe_height", 360)
+  const emptyText = language === "zh" ? "iframe 地址为空" : "No iframe URL"
+
+  return (
+    <Card className="h-full overflow-hidden">
+      {title && (
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+      )}
+      <CardContent className={title ? undefined : "pt-6"}>
+        {url ? (
+          <iframe
+            title={title || "Iframe widget"}
+            src={url}
+            sandbox="allow-forms allow-popups allow-same-origin allow-scripts"
+            referrerPolicy="no-referrer"
+            className="w-full rounded-md border bg-background"
+            style={{ height }}
+          />
+        ) : (
+          <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">{emptyText}</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function stringConfig(config: PageComponentConfig, key: string) {
+  const value = config[key]
+  return typeof value === "string" ? value : ""
+}
+
+function sizeConfig(config: PageComponentConfig, key: string, fallback: number) {
+  const value = Number(config[key])
+  if (!Number.isFinite(value) || value < 80) {
+    return fallback
+  }
+  return Math.min(1200, value)
 }
 
 function DashboardStatsWidget() {

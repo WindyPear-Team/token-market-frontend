@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import { useToast } from "@/components/ui/toast"
 
 interface Group {
@@ -171,6 +171,8 @@ export default function Users() {
         </Table>
       </div>
 
+      <PageInlineSlot slotKey="primary" />
+      <PageInlineSlot slotKey="secondary" />
       <Dialog open={Boolean(editingUser)} onOpenChange={(open) => !open && setEditingUser(null)}>
         <DialogContent>
           <DialogHeader>

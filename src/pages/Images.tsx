@@ -5,7 +5,7 @@ import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import { useToast } from "@/components/ui/toast"
 import { useI18n } from "@/lib/i18n"
 
@@ -268,6 +268,8 @@ export default function Images() {
           </Card>
         </div>
       </div>
+      <PageInlineSlot slotKey="primary" />
+      <PageInlineSlot slotKey="secondary" />
     </div>
   )
 }

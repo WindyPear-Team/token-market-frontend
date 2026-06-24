@@ -2,7 +2,7 @@ import { Activity, BarChart3, Database, DollarSign, LineChart, PieChart, Users }
 import type { LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -95,6 +95,7 @@ export default function AdminOverview() {
         ))}
       </div>
 
+      <PageInlineSlot slotKey="primary" />
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>{copy.hourlySpend}</CardTitle>
@@ -105,6 +106,7 @@ export default function AdminOverview() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="secondary" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { PublicSettings } from "@/lib/public-settings"
@@ -220,6 +220,7 @@ export default function DataBoard() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="primary" />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summary.map((item) => (
           <Card key={item.title}>
@@ -243,6 +244,7 @@ export default function DataBoard() {
         </CardContent>
       </Card>
 
+      <PageInlineSlot slotKey="secondary" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">

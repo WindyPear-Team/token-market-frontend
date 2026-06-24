@@ -1,15 +1,18 @@
 export const DASHBOARD_PAGE_KEY = "/dashboard"
 
-export const pageSlotKeys = ["before", "main", "after"] as const
+export const pageSlotKeys = ["before", "main", "primary", "secondary", "after"] as const
 
 export type PageSlotKey = (typeof pageSlotKeys)[number]
 
 export type PageComponentWidth = "full" | "half" | "third"
 
+export type PageComponentConfig = Record<string, string | number | boolean>
+
 export interface PageComponentItem {
   id: string
   type: string
   width?: PageComponentWidth
+  config?: PageComponentConfig
 }
 
 export type PageSlots = Partial<Record<PageSlotKey, PageComponentItem[]>>
@@ -100,12 +103,16 @@ export function clonePageSlots(slots?: PageSlots): PageSlots {
   }, {})
 }
 
-export function newPageComponentItem(type: string, width: PageComponentWidth = "half"): PageComponentItem {
-  return {
+export function newPageComponentItem(type: string, width: PageComponentWidth = "half", config?: PageComponentConfig): PageComponentItem {
+  const item: PageComponentItem = {
     id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     type,
     width,
   }
+  if (config && Object.keys(config).length > 0) {
+    item.config = config
+  }
+  return item
 }
 
 function normalizeComponentItem(value: unknown): PageComponentItem | null {
@@ -120,13 +127,36 @@ function normalizeComponentItem(value: unknown): PageComponentItem | null {
   }
 
   const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : newPageComponentItem(type).id
-  return {
+  const component: PageComponentItem = {
     id,
     type,
     width: normalizeWidth(item.width),
   }
+  const config = normalizeConfig(item.config)
+  if (config) {
+    component.config = config
+  }
+  return component
 }
 
 function normalizeWidth(value: unknown): PageComponentWidth {
   return value === "full" || value === "half" || value === "third" ? value : "half"
+}
+
+function normalizeConfig(value: unknown): PageComponentConfig | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined
+  }
+
+  const config = Object.entries(value as Record<string, unknown>).reduce<PageComponentConfig>((next, [key, entry]) => {
+    if (!key) {
+      return next
+    }
+    if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
+      next[key] = entry
+    }
+    return next
+  }, {})
+
+  return Object.keys(config).length > 0 ? config : undefined
 }

@@ -28,7 +28,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import { TabTransition } from "@/components/layout/TabTransition"
 import { useToast } from "@/components/ui/toast"
 import {
@@ -795,6 +795,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         ))}
       </div>
 
+      <PageInlineSlot slotKey="primary" />
       <TabTransition activeKey={activeTab} order={visibleTabs.map((tab) => tab.id)}>
       {activeTab === "basic" && (
         <SettingsPanel title={copy.basic}>
@@ -1664,6 +1665,7 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
       </TabTransition>
+      <PageInlineSlot slotKey="secondary" />
     </div>
   )
 }

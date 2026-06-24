@@ -1,4 +1,4 @@
-import { Bot, Menu, MessageSquare, Palette, Sparkles, UserCircle } from "lucide-react"
+import { Bot, Menu, MessageSquare, Palette, SlidersHorizontal, Sparkles, UserCircle } from "lucide-react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
@@ -9,9 +9,12 @@ import AdvancedChatMCP from "./AdvancedChatMCP"
 import Images from "./Images"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { Button } from "@/components/ui/button"
+import { PageComponentSlots } from "@/components/layout/PageComponentSlots"
+import { PageLayoutEditBar, PageLayoutEditorProvider } from "@/components/layout/PageLayoutEditor"
 import { PageTransition } from "@/components/layout/PageTransition"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
+import { pageKeyFromPathname } from "@/lib/page-layouts"
 import type { PublicSettings } from "@/lib/public-settings"
 import { parseTopNavItems, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
@@ -20,11 +23,14 @@ interface CurrentUser {
   username?: string
   email?: string
   avatar_url?: string
+  is_admin?: boolean
 }
 
 export default function AdvancedChat() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const { t } = useI18n()
+  const [isLayoutEditing, setIsLayoutEditing] = useState(false)
+  const location = useLocation()
+  const { language, t } = useI18n()
   const { data: settings } = useQuery<PublicSettings>({
     queryKey: ["public-settings"],
     queryFn: async () => {
@@ -41,8 +47,16 @@ export default function AdvancedChat() {
   })
   const publicSettings = withPublicSettingsDefaults(settings)
   const topNavItems = parseTopNavItems(publicSettings.top_nav_items)
+  const currentPageKey = pageKeyFromPathname(location.pathname)
+  const layoutEditorLabel = language === "zh" ? (isLayoutEditing ? "退出编辑" : "可视化编辑") : isLayoutEditing ? "Exit editing" : "Visual editing"
 
   return (
+    <PageLayoutEditorProvider
+      currentPageKey={currentPageKey}
+      isEditing={isLayoutEditing}
+      pageLayoutsRaw={publicSettings.page_layouts}
+      onEditingChange={setIsLayoutEditing}
+    >
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="z-30 flex h-16 shrink-0 items-center justify-between border-b bg-background/95 px-4 backdrop-blur sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
@@ -69,9 +83,22 @@ export default function AdvancedChat() {
               ))}
             </div>
           )}
+          {user?.is_admin && (
+            <Button
+              variant={isLayoutEditing ? "default" : "outline"}
+              size="icon"
+              title={layoutEditorLabel}
+              aria-label={layoutEditorLabel}
+              disabled={!settings}
+              onClick={() => setIsLayoutEditing((editing) => !editing)}
+            >
+              <SlidersHorizontal size={18} />
+            </Button>
+          )}
           <UserAvatar user={user} />
         </div>
       </header>
+      {user?.is_admin && <PageLayoutEditBar />}
 
       <div className="flex min-h-0 flex-1">
         <div className="hidden lg:block lg:h-full lg:shrink-0">
@@ -100,14 +127,17 @@ export default function AdvancedChat() {
           )}
           <div className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">
             <PageTransition>
-              <Routes>
-                <Route index element={<Chat variant="advanced" />} />
-                <Route path="agents" element={<Agents />} />
-                <Route path="skills" element={<Skills />} />
-                <Route path="mcp" element={<AdvancedChatMCP />} />
-                <Route path="images" element={<Images />} />
-                <Route path="*" element={<Navigate to="/chat" replace />} />
-              </Routes>
+              <div className="space-y-6">
+                <Routes>
+                  <Route index element={<Chat variant="advanced" />} />
+                  <Route path="agents" element={<Agents />} />
+                  <Route path="skills" element={<Skills />} />
+                  <Route path="mcp" element={<AdvancedChatMCP />} />
+                  <Route path="images" element={<Images />} />
+                  <Route path="*" element={<Navigate to="/chat" replace />} />
+                </Routes>
+                <PageComponentSlots pageKey={currentPageKey} slotKey="after" />
+              </div>
             </PageTransition>
           </div>
           {publicSettings.footer_text && (
@@ -118,6 +148,7 @@ export default function AdvancedChat() {
         </main>
       </div>
     </div>
+    </PageLayoutEditorProvider>
   )
 }
 

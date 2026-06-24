@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PageTitleSlot } from "@/components/layout/PageTitleSlot"
+import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import type { PublicSettings } from "@/lib/public-settings"
 import { withPublicSettingsDefaults } from "@/lib/public-settings"
 import { passkeyCredentialToJSON, passkeySupported, preparePasskeyCreationOptions } from "@/lib/passkey"
@@ -217,6 +217,7 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        <PageInlineSlot className="lg:col-span-2" slotKey="primary" />
         {publicSettings.oidc_enabled && (
           <Card>
             <CardHeader>
@@ -342,6 +343,7 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        <PageInlineSlot className="lg:col-span-2" slotKey="secondary" />
       </div>
     </div>
   )
