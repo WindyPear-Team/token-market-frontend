@@ -2180,7 +2180,9 @@ function MetaModelDialog({
   onValidate: () => void
   onSave: () => void
 }) {
-  const { t } = useI18n()
+  const { language, t } = useI18n()
+  const templates = metaModelLanguageTemplates(language)
+  const reference = metaModelLanguageReference(language)
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
@@ -2219,7 +2221,34 @@ function MetaModelDialog({
               <TextField label={copy.cachedInputPrice} value={draft.cached_input_price} placeholder="0" type="number" onChange={(value) => onDraftChange({ ...draft, cached_input_price: value })} />
             </div>
           )}
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm font-medium">{language === "zh" ? "语言模板" : "Language templates"}</div>
+              <div className="text-xs text-muted-foreground">{language === "zh" ? "点按会替换当前 DSL 内容" : "Clicking replaces the current DSL content"}</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {templates.map((template) => (
+                <Button
+                  key={template.label}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onDraftChange({ ...draft, dsl: template.dsl })}
+                >
+                  {template.label}
+                </Button>
+              ))}
+            </div>
+          </div>
           <TextareaField label={copy.metaModelDSL} value={draft.dsl} placeholder={copy.metaModelDSLPlaceholder} help={copy.metaModelDSLHelp} onChange={(value) => onDraftChange({ ...draft, dsl: value })} />
+          <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground md:grid-cols-3">
+            {reference.map((section) => (
+              <div key={section.title}>
+                <div className="mb-1 font-medium text-foreground">{section.title}</div>
+                <div className="whitespace-pre-wrap font-mono">{section.body}</div>
+              </div>
+            ))}
+          </div>
           <label className="flex h-10 items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.enabled} onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })} />
             {copy.enabled}
@@ -2233,6 +2262,98 @@ function MetaModelDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function metaModelLanguageTemplates(language: string) {
+  const zh = language === "zh"
+  return [
+    {
+      label: zh ? "按上下文长度" : "By context length",
+      dsl: `route {
+  when request.input_tokens <= 2000 => call "your-small-model"
+  when request.input_tokens <= 16000 => call "your-balanced-model"
+  otherwise => call "your-large-context-model"
+}`,
+    },
+    {
+      label: zh ? "按内容类型" : "By content type",
+      dsl: `route {
+  when request.has_image == true => call "your-vision-model"
+  when request.has_audio == true => call "your-audio-model"
+  when request.has_tools == true => call "your-tool-model"
+  otherwise => call "your-chat-model"
+}`,
+    },
+    {
+      label: zh ? "按文本关键词" : "By text keyword",
+      dsl: `route {
+  when request.last_user_message matches "(?i)(code|debug|error)" => call "your-coding-model"
+  when request.text contains "translate" => call "your-fast-model"
+  otherwise => call "your-default-model"
+}`,
+    },
+    {
+      label: zh ? "按用户额度" : "By user quota",
+      dsl: `route {
+  when api_key.quota_remaining > 0 => call "your-premium-model"
+  when user.balance < 1 => call "your-economy-model"
+  otherwise => call "your-balanced-model"
+}`,
+    },
+  ]
+}
+
+function metaModelLanguageReference(language: string) {
+  if (language === "zh") {
+    return [
+      {
+        title: "动作",
+        body: `call "model"
+route { when 条件 => 动作 otherwise => 动作 }`,
+      },
+      {
+        title: "操作符",
+        body: `== != < <= > >=
+contains not_contains
+starts_with ends_with
+matches`,
+      },
+      {
+        title: "常用变量",
+        body: `request.input_tokens
+request.text
+request.last_user_message
+request.has_image / has_audio / has_tools
+request.stream / temperature
+user.balance / user.group
+api_key.quota_remaining`,
+      },
+    ]
+  }
+  return [
+    {
+      title: "Actions",
+      body: `call "model"
+route { when condition => action otherwise => action }`,
+    },
+    {
+      title: "Operators",
+      body: `== != < <= > >=
+contains not_contains
+starts_with ends_with
+matches`,
+    },
+    {
+      title: "Variables",
+      body: `request.input_tokens
+request.text
+request.last_user_message
+request.has_image / has_audio / has_tools
+request.stream / temperature
+user.balance / user.group
+api_key.quota_remaining`,
+    },
+  ]
 }
 
 function parseTopNavRows(raw: string): NavRow[] {
@@ -2862,7 +2983,7 @@ const zhCopy = {
   cachedInputPrice: "缓存输入价格",
   metaModelDSL: "Meta Module Language",
   metaModelDSLPlaceholder: "route {\n  when request.input_tokens <= 2000 => call \"your-real-model-a\"\n  otherwise => call \"your-real-model-b\"\n}",
-  metaModelDSLHelp: "call 中的模型名必须是已存在的真实模型。当前执行支持 call 和 route；parallel、synthesize、judge 可解析但暂未执行。",
+  metaModelDSLHelp: "call 中的模型名必须是已存在的真实模型。当前执行支持 call 和 route。条件支持数字、布尔和字符串匹配。",
   validateMetaModel: "校验 DSL",
   subscriptionPlans: "订阅套餐",
   subscriptionPlansDescription: "创建可通过兑换码授予的周期额度套餐",
@@ -3175,7 +3296,7 @@ const enCopy: SystemCopy = {
   cachedInputPrice: "Cached input price",
   metaModelDSL: "Meta Module Language",
   metaModelDSLPlaceholder: "route {\n  when request.input_tokens <= 2000 => call \"your-real-model-a\"\n  otherwise => call \"your-real-model-b\"\n}",
-  metaModelDSLHelp: "Model names in call must reference existing real models. Current execution supports call and route. parallel, synthesize, and judge can be parsed but are not executed yet.",
+  metaModelDSLHelp: "Model names in call must reference existing real models. Current execution supports call and route. Conditions support number, boolean, and string matching.",
   validateMetaModel: "Validate Language",
   subscriptionPlans: "Subscription Plans",
   subscriptionPlansDescription: "Create recurring quota plans that can be granted by redeem codes.",
