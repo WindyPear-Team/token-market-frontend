@@ -274,6 +274,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   if (normalizedPathname === "/chat/agents") {
     return t("nav.agents")
   }
+  if (normalizedPathname === "/chat/devices") {
+    return t("nav.devices")
+  }
   if (normalizedPathname === "/chat/mcp") {
     return "MCP"
   }

@@ -1,4 +1,4 @@
-import { Bot, Menu, MessageSquare, Palette, SlidersHorizontal, Sparkles, UserCircle } from "lucide-react"
+import { Bot, Laptop, Menu, MessageSquare, Palette, SlidersHorizontal, Sparkles, UserCircle } from "lucide-react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
@@ -7,6 +7,7 @@ import Agents from "./Agents"
 import Skills from "./Skills"
 import AdvancedChatMCP from "./AdvancedChatMCP"
 import Images from "./Images"
+import AdvancedChatDevices from "./AdvancedChatDevices"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { Button } from "@/components/ui/button"
 import { PageComponentSlots } from "@/components/layout/PageComponentSlots"
@@ -133,6 +134,7 @@ export default function AdvancedChat() {
                   <Route path="agents" element={<Agents />} />
                   <Route path="skills" element={<Skills />} />
                   <Route path="mcp" element={<AdvancedChatMCP />} />
+                  <Route path="devices" element={<AdvancedChatDevices />} />
                   <Route path="images" element={<Images />} />
                   <Route path="*" element={<Navigate to="/chat" replace />} />
                 </Routes>
@@ -160,6 +162,7 @@ function AdvancedChatSidebar({ className, onNavigate }: { className?: string; on
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
     { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
     { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },
+    { href: "/chat/devices", label: t("nav.devices"), icon: Laptop, active: location.pathname === "/chat/devices" },
     { href: "/chat/mcp", label: t("nav.mcp"), icon: Bot, active: location.pathname === "/chat/mcp" },
   ]
 

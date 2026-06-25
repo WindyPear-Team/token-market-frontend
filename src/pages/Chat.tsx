@@ -110,13 +110,13 @@ interface MCPServer {
 interface ConnectorDevice {
   id: string
   name: string
+  remark?: string
   hostname?: string
   os?: string
   arch?: string
   version?: string
   status: string
   online: boolean
-  workspaces: string[]
   last_seen_at?: string
 }
 
@@ -202,8 +202,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const storeKeys = chatStoreKeys[variant]
   const { t } = useI18n()
   const copy = useMemo(() => buildChatCopy(t), [t])
-  const { error, success } = useToast()
-  const [sessions, setSessions] = useState<ChatSession[]>(() => (variant === "advanced" ? [createSession()] : readStoredSessions(storeKeys.sessions, true)))
+  const { error } = useToast()
+  const [sessions, setSessions] = useState<ChatSession[]>(() => (variant === "advanced" ? [] : readStoredSessions(storeKeys.sessions, true)))
+  const [draftSession, setDraftSession] = useState<ChatSession>(() => createSession())
   const [activeSessionID, setActiveSessionID] = useState(() => localStorage.getItem(storeKeys.selectedSession) || "")
   const [modelName, setModelName] = useState(() => localStorage.getItem(storeKeys.model) || "")
   const [endpointMode, setEndpointMode] = useState<ChatEndpoint>(() => readStoredEndpoint(storeKeys.endpoint))
@@ -218,8 +219,6 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const [pendingMCPServerID, setPendingMCPServerID] = useState("")
   const [pendingConnectorDeviceID, setPendingConnectorDeviceID] = useState("")
   const [pendingConnectorWorkspace, setPendingConnectorWorkspace] = useState("")
-  const [connectorToken, setConnectorToken] = useState("")
-  const [isCreatingConnectorToken, setIsCreatingConnectorToken] = useState(false)
   const [prompt, setPrompt] = useState("")
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [isSending, setIsSending] = useState(false)
@@ -290,10 +289,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     },
   })
 
-  const {
-    data: connectorDevices = [],
-    refetch: refetchConnectorDevices,
-  } = useQuery<ConnectorDevice[]>({
+  const { data: connectorDevices = [] } = useQuery<ConnectorDevice[]>({
     queryKey: connectorDevicesQueryKey,
     enabled: isAdvanced,
     refetchInterval: 5000,
@@ -310,11 +306,12 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     [selectableAPIKeys, selectedAPIKeyID]
   )
   const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionID) || sessions[0],
+    () => sessions.find((session) => session.id === activeSessionID),
     [sessions, activeSessionID]
   )
+  const currentSession = activeSession || draftSession
   const activeToolCalls = useMemo(() => {
-    const messages = activeSession?.messages || []
+    const messages = currentSession?.messages || []
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const toolCalls = messages[index].tool_calls || []
       if (toolCalls.length > 0) {
@@ -322,17 +319,17 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       }
     }
     return []
-  }, [activeSession?.messages])
+  }, [currentSession?.messages])
   const selectedAgent = useMemo(() => {
     if (!isAdvanced) {
       return undefined
     }
-    return agents.find((agent) => agent.id === activeSession?.agent_id)
-  }, [activeSession?.agent_id, agents, isAdvanced])
-  const activeRunMode: ChatRunMode = isAdvanced ? activeSession?.run_mode || "chat" : "chat"
-  const activeRun = isAdvanced ? activeSession?.latest_run : undefined
+    return agents.find((agent) => agent.id === currentSession?.agent_id)
+  }, [currentSession?.agent_id, agents, isAdvanced])
+  const activeRunMode: ChatRunMode = isAdvanced ? currentSession?.run_mode || "chat" : "chat"
+  const activeRun = isAdvanced ? currentSession?.latest_run : undefined
   const isActiveRunRunning = isRunActive(activeRun)
-  const activeModelName = isAdvanced ? activeSession?.model_name || selectedAgent?.default_model || modelName : modelName
+  const activeModelName = isAdvanced ? currentSession?.model_name || selectedAgent?.default_model || modelName : modelName
   const selectableUserChannels = useMemo(
     () => catalog.filter((channel) => !activeModelName || channel.models.includes(activeModelName)),
     [activeModelName, catalog]
@@ -353,39 +350,28 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [currentAdvancedSettings])
   const enabledMCPServers = useMemo(() => mcpServers.filter((server) => server.enabled), [mcpServers])
   const selectedSkills = useMemo(() => {
-    const selectedIDs = activeSession?.skill_ids || []
+    const selectedIDs = currentSession?.skill_ids || []
     return skills.filter((skill) => selectedIDs.includes(skill.id))
-  }, [activeSession?.skill_ids, skills])
+  }, [currentSession?.skill_ids, skills])
   const availableSkillsToAdd = useMemo(() => {
-    const selectedIDs = new Set(activeSession?.skill_ids || [])
+    const selectedIDs = new Set(currentSession?.skill_ids || [])
     return skills.filter((skill) => !selectedIDs.has(skill.id))
-  }, [activeSession?.skill_ids, skills])
+  }, [currentSession?.skill_ids, skills])
   const skillMCPServerIDs = useMemo(() => uniqueStrings(selectedSkills.flatMap((skill) => skill.mcp_server_ids)), [selectedSkills])
   const sessionMCPServers = useMemo(() => {
-    const selectedIDs = new Set(activeSession?.mcp_server_ids || [])
+    const selectedIDs = new Set(currentSession?.mcp_server_ids || [])
     return enabledMCPServers.filter((server) => selectedIDs.has(server.id))
-  }, [activeSession?.mcp_server_ids, enabledMCPServers])
+  }, [currentSession?.mcp_server_ids, enabledMCPServers])
   const availableMCPServersToAdd = useMemo(() => {
-    const selectedIDs = new Set(activeSession?.mcp_server_ids || [])
+    const selectedIDs = new Set(currentSession?.mcp_server_ids || [])
     const skillSelectedIDs = new Set(skillMCPServerIDs)
     return enabledMCPServers.filter((server) => !selectedIDs.has(server.id) && !skillSelectedIDs.has(server.id))
-  }, [activeSession?.mcp_server_ids, enabledMCPServers, skillMCPServerIDs])
+  }, [currentSession?.mcp_server_ids, enabledMCPServers, skillMCPServerIDs])
   const selectedConnectorDevice = useMemo(
-    () => connectorDevices.find((device) => device.id === activeSession?.connector_device_id),
-    [activeSession?.connector_device_id, connectorDevices]
+    () => connectorDevices.find((device) => device.id === currentSession?.connector_device_id),
+    [currentSession?.connector_device_id, connectorDevices]
   )
-  const availableConnectorDevices = useMemo(() => connectorDevices.filter((device) => device.online), [connectorDevices])
-  const pendingConnectorDevice = useMemo(
-    () => connectorDevices.find((device) => device.id === pendingConnectorDeviceID),
-    [connectorDevices, pendingConnectorDeviceID]
-  )
-  const connectorCommand = useMemo(() => {
-    if (!connectorToken) {
-      return ""
-    }
-    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8080"
-    return `go run ./app -server ${origin} -token ${connectorToken} -workspace <workspace-path>`
-  }, [connectorToken])
+  const selectableConnectorDevices = connectorDevices
 
   useEffect(() => {
     if (isAdvanced) {
@@ -402,18 +388,20 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [isAdvanced, serverSessions, serverSessionsFetched])
 
   useEffect(() => {
-    if (!activeSessionID && sessions[0]) {
+    if (activeSessionID && !sessions.some((session) => session.id === activeSessionID) && sessions[0]) {
       setActiveSessionID(sessions[0].id)
       return
     }
-    if (activeSessionID && !sessions.some((session) => session.id === activeSessionID) && sessions[0]) {
-      setActiveSessionID(sessions[0].id)
+    if (activeSessionID && sessions.length === 0) {
+      setActiveSessionID("")
     }
   }, [activeSessionID, sessions])
 
   useEffect(() => {
     if (activeSessionID) {
       localStorage.setItem(storeKeys.selectedSession, activeSessionID)
+    } else {
+      localStorage.removeItem(storeKeys.selectedSession)
     }
   }, [activeSessionID, storeKeys.selectedSession])
 
@@ -463,11 +451,11 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [isAdvanced, selectedUserChannelID, storeKeys.userChannel])
 
   useEffect(() => {
-    if (!isAdvanced || !activeSession?.user_channel_id || activeSession.user_channel_id === selectedUserChannelID) {
+    if (!isAdvanced || !currentSession?.user_channel_id || currentSession.user_channel_id === selectedUserChannelID) {
       return
     }
-    setSelectedUserChannelID(activeSession.user_channel_id)
-  }, [activeSession?.id, activeSession?.user_channel_id, isAdvanced, selectedUserChannelID])
+    setSelectedUserChannelID(currentSession.user_channel_id)
+  }, [currentSession?.id, currentSession?.user_channel_id, isAdvanced, selectedUserChannelID])
 
   useEffect(() => {
     if (!isAdvanced && !modelName && modelOptions.length > 0) {
@@ -488,12 +476,12 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [agents, isAdvanced, selectedAgentID])
 
   useEffect(() => {
-    if (!isAdvanced || !activeSession || activeSession.model_name || modelOptions.length === 0) {
+    if (!isAdvanced || !currentSession || currentSession.model_name || modelOptions.length === 0) {
       return
     }
     const defaultModel = selectedAgent?.default_model || modelOptions[0]
-    updateSession(activeSession.id, (session) => ({ ...session, model_name: defaultModel }))
-  }, [activeSession, isAdvanced, modelOptions, selectedAgent?.default_model])
+    updateSession(currentSession.id, (session) => ({ ...session, model_name: defaultModel }))
+  }, [currentSession, isAdvanced, modelOptions, selectedAgent?.default_model])
 
   useEffect(() => {
     if (!pendingAgentID && agents[0]) {
@@ -522,39 +510,25 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [availableMCPServersToAdd, pendingMCPServerID])
 
   useEffect(() => {
-    if (!pendingConnectorDeviceID && availableConnectorDevices[0]) {
-      setPendingConnectorDeviceID(availableConnectorDevices[0].id)
+    if (!pendingConnectorDeviceID && selectableConnectorDevices[0]) {
+      setPendingConnectorDeviceID(selectableConnectorDevices[0].id)
       return
     }
     if (pendingConnectorDeviceID && !connectorDevices.some((device) => device.id === pendingConnectorDeviceID)) {
-      setPendingConnectorDeviceID(availableConnectorDevices[0]?.id || "")
+      setPendingConnectorDeviceID(selectableConnectorDevices[0]?.id || "")
     }
-  }, [availableConnectorDevices, connectorDevices, pendingConnectorDeviceID])
-
-  useEffect(() => {
-    const workspaces = pendingConnectorDevice?.workspaces || []
-    if (!pendingConnectorWorkspace && workspaces[0]) {
-      setPendingConnectorWorkspace(workspaces[0])
-      return
-    }
-    if (pendingConnectorWorkspace && !workspaces.includes(pendingConnectorWorkspace)) {
-      setPendingConnectorWorkspace(workspaces[0] || "")
-    }
-  }, [pendingConnectorDevice, pendingConnectorWorkspace])
+  }, [selectableConnectorDevices, connectorDevices, pendingConnectorDeviceID])
 
   const createNewSession = () => {
     const session = createSession({
       modelName: isAdvanced ? modelOptions[0] || modelName : undefined,
     })
-    setSessions((current) => [session, ...current])
-    setActiveSessionID(session.id)
+    setDraftSession(session)
+    setActiveSessionID("")
     setIsSessionsSidebarOpen(false)
     setPrompt("")
     setAttachments([])
     cancelEdit()
-    if (isAdvanced) {
-      void persistAdvancedSession(session)
-    }
   }
 
   const deleteSession = (sessionID: string) => {
@@ -562,10 +536,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       void api.delete(`/user/advanced-chat/sessions/${encodeURIComponent(sessionID)}`).then(() => refetchAdvancedSessions()).catch(() => undefined)
     }
     const nextSessions = sessions.filter((session) => session.id !== sessionID)
-    const fallbackSessions = nextSessions.length > 0 ? nextSessions : [createSession()]
-    setSessions(fallbackSessions)
-    if (activeSessionID === sessionID || !fallbackSessions.some((session) => session.id === activeSessionID)) {
-      setActiveSessionID(fallbackSessions[0].id)
+    setSessions(nextSessions)
+    if (activeSessionID === sessionID || !nextSessions.some((session) => session.id === activeSessionID)) {
+      setActiveSessionID(nextSessions[0]?.id || "")
     }
     cancelEdit()
   }
@@ -583,21 +556,29 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       .catch((err) => error(apiErrorMessage(err, err instanceof Error ? err.message : copy.sendFailed)))
   }
 
-  const updateSession = (sessionID: string, updater: (session: ChatSession) => ChatSession, options: { persist?: boolean } = {}) => {
-    const baseSession = sessions.find((session) => session.id === sessionID)
+  const updateSession = (sessionID: string, updater: (session: ChatSession) => ChatSession, options: { persist?: boolean; materialize?: boolean } = {}) => {
+    const existingSession = sessions.find((session) => session.id === sessionID)
+    const baseSession = existingSession || (draftSession.id === sessionID ? draftSession : undefined)
     const persistedSession = baseSession ? { ...updater(baseSession), updated_at: new Date().toISOString() } : undefined
-    setSessions((current) =>
-      current.map((session) => {
-        if (session.id !== sessionID) {
-          return session
-        }
-        if (persistedSession) {
-          return persistedSession
-        }
-        return { ...updater(session), updated_at: new Date().toISOString() }
-      })
-    )
-    if (options.persist && persistedSession) {
+    setSessions((current) => {
+      const index = current.findIndex((session) => session.id === sessionID)
+      if (index >= 0) {
+        return current.map((session) =>
+          session.id === sessionID ? { ...updater(session), updated_at: new Date().toISOString() } : session
+        )
+      }
+      if (options.materialize && persistedSession) {
+        return [persistedSession, ...current]
+      }
+      return current
+    })
+    if (draftSession.id === sessionID) {
+      setDraftSession((current) => current.id === sessionID ? { ...updater(current), updated_at: new Date().toISOString() } : current)
+    }
+    if (options.materialize) {
+      setActiveSessionID(sessionID)
+    }
+    if (options.persist && persistedSession && existingSession) {
       persistAdvancedSession(persistedSession)
     }
   }
@@ -611,10 +592,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const setSessionAgent = (agentID: string) => {
     setSelectedAgentID(agentID)
     const agent = agents.find((item) => item.id === agentID)
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       agent_id: agentID || undefined,
       model_name: agent?.default_model || session.model_name || modelOptions[0] || "",
@@ -622,81 +603,81 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }
 
   const removeAgentFromSession = () => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       agent_id: undefined,
     }), { persist: true })
   }
 
   const handleSessionModelChange = (value: string) => {
-    if (isAdvanced && activeSession) {
-      updateSession(activeSession.id, (session) => ({ ...session, model_name: value }), { persist: true })
+    if (isAdvanced && currentSession) {
+      updateSession(currentSession.id, (session) => ({ ...session, model_name: value }), { persist: true })
       return
     }
     setModelName(value)
   }
 
   const setSessionRunMode = (mode: ChatRunMode) => {
-    if (!isAdvanced || !activeSession) {
+    if (!isAdvanced || !currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({ ...session, run_mode: mode }), { persist: true })
+    updateSession(currentSession.id, (session) => ({ ...session, run_mode: mode }), { persist: true })
   }
 
   const addSessionSkill = (skillID: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    if (activeSession.skill_ids.includes(skillID)) {
+    if (currentSession.skill_ids.includes(skillID)) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       skill_ids: [...session.skill_ids, skillID],
     }), { persist: true })
   }
 
   const removeSessionSkill = (skillID: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       skill_ids: session.skill_ids.filter((id) => id !== skillID),
     }), { persist: true })
   }
 
   const addSessionMCPServer = (serverID: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    if (activeSession.mcp_server_ids.includes(serverID)) {
+    if (currentSession.mcp_server_ids.includes(serverID)) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       mcp_server_ids: [...session.mcp_server_ids, serverID],
     }), { persist: true })
   }
 
   const removeSessionMCPServer = (serverID: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       mcp_server_ids: session.mcp_server_ids.filter((id) => id !== serverID),
     }), { persist: true })
   }
 
   const setSessionConnector = (deviceID: string, workspacePath: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       connector_device_id: deviceID || undefined,
       connector_workspace_path: workspacePath || undefined,
@@ -704,32 +685,23 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }
 
   const clearSessionConnector = () => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       connector_device_id: undefined,
       connector_workspace_path: undefined,
     }), { persist: true })
   }
 
-  const createConnectorToken = async () => {
-    setIsCreatingConnectorToken(true)
-    try {
-      const res = await api.post("/user/advanced-chat/devices/token", { name: copy.localDevice })
-      const token = typeof res.data?.token === "string" ? res.data.token : ""
-      if (!token) {
-        throw new Error(copy.connectorTokenCreateFailed)
-      }
-      setConnectorToken(token)
-      success(copy.connectorTokenCreated)
-      void refetchConnectorDevices()
-    } catch (err) {
-      error(apiErrorMessage(err, copy.connectorTokenCreateFailed))
-    } finally {
-      setIsCreatingConnectorToken(false)
+  const openAdvancedConfig = (tab: SessionConfigTab = configTab) => {
+    if (tab === "device") {
+      setPendingConnectorDeviceID(currentSession?.connector_device_id || connectorDevices[0]?.id || "")
+      setPendingConnectorWorkspace(currentSession?.connector_workspace_path || "")
     }
+    setConfigTab(tab)
+    setIsConfigOpen(true)
   }
 
   const stopStreaming = () => {
@@ -739,7 +711,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const sendMessage = async () => {
     const content = prompt.trim()
     const rawKey = selectedAPIKey?.api_key.trim() || ""
-    const session = activeSession
+    const session = currentSession
     const resolvedModel = activeModelName.trim()
     if (!session) {
       return
@@ -764,7 +736,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     const userMessage = createMessage("user", messageContent)
     const nextMessages = [...session.messages, userMessage]
     const nextTitle = session.title || titleFromMessage(content || attachments[0]?.name || copy.attachmentMessageTitle, copy)
-    updateSession(session.id, (current) => ({ ...current, title: nextTitle, messages: nextMessages, model_name: resolvedModel }))
+    updateSession(session.id, (current) => ({ ...current, title: nextTitle, messages: nextMessages, model_name: resolvedModel }), { materialize: true })
     setPrompt("")
     setAttachments([])
     setIsSending(true)
@@ -861,6 +833,61 @@ export default function Chat({ variant = "basic" }: ChatProps) {
           const reader = response.body.getReader()
           const decoder = new TextDecoder()
           let buffer = ""
+          const handleStreamEvent = (event: ParsedSSEEvent | null) => {
+            if (!event) {
+              return
+            }
+            if (event.type === "text") {
+              const delta = typeof event.payload.delta === "string" ? event.payload.delta : ""
+              if (!delta) {
+                return
+              }
+              accumulatedText += delta
+              updateSession(session.id, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.id === assistantMessageID ? { ...message, content: accumulatedText } : message
+                ),
+              }))
+            } else if (event.type === "status") {
+              const statusText = streamStatusText(event.payload, copy)
+              if (!statusText || accumulatedText) {
+                return
+              }
+              updateSession(session.id, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.id === assistantMessageID ? { ...message, content: statusText } : message
+                ),
+              }))
+            } else if (event.type === "tool_call") {
+              const nextToolCalls = normalizeToolCalls([event.payload])
+              if (nextToolCalls.length === 0) {
+                return
+              }
+              updateSession(session.id, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.id === assistantMessageID
+                    ? { ...message, tool_calls: mergeToolCalls(message.tool_calls || [], nextToolCalls) }
+                    : message
+                ),
+              }))
+            } else if (event.type === "done") {
+              const finalContent = typeof event.payload.message?.content === "string" ? event.payload.message.content : accumulatedText
+              const finalToolCalls = normalizeToolCalls(event.payload.tool_call_details)
+              updateSession(session.id, (current) => ({
+                ...current,
+                messages: current.messages.map((message) =>
+                  message.id === assistantMessageID
+                    ? { ...message, content: finalContent || copy.emptyResponse, tool_calls: finalToolCalls }
+                    : message
+                ),
+              }))
+            } else if (event.type === "error") {
+              throw new Error(typeof event.payload.error === "string" ? event.payload.error : copy.sendFailed)
+            }
+          }
           for (;;) {
             const { done, value } = await reader.read()
             if (done) {
@@ -870,61 +897,11 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             const parts = buffer.split(/\r?\n\r?\n/)
             buffer = parts.pop() || ""
             for (const part of parts) {
-              const event = parseSSEEvent(part)
-              if (!event) {
-                continue
-              }
-              if (event.type === "text") {
-                const delta = typeof event.payload.delta === "string" ? event.payload.delta : ""
-                if (!delta) {
-                  continue
-                }
-                accumulatedText += delta
-                updateSession(session.id, (current) => ({
-                  ...current,
-                  messages: current.messages.map((message) =>
-                    message.id === assistantMessageID ? { ...message, content: accumulatedText } : message
-                  ),
-                }))
-              } else if (event.type === "status") {
-                const statusText = streamStatusText(event.payload, copy)
-                if (!statusText || accumulatedText) {
-                  continue
-                }
-                updateSession(session.id, (current) => ({
-                  ...current,
-                  messages: current.messages.map((message) =>
-                    message.id === assistantMessageID ? { ...message, content: statusText } : message
-                  ),
-                }))
-              } else if (event.type === "tool_call") {
-                const nextToolCalls = normalizeToolCalls([event.payload])
-                if (nextToolCalls.length === 0) {
-                  continue
-                }
-                updateSession(session.id, (current) => ({
-                  ...current,
-                  messages: current.messages.map((message) =>
-                    message.id === assistantMessageID
-                      ? { ...message, tool_calls: mergeToolCalls(message.tool_calls || [], nextToolCalls) }
-                      : message
-                  ),
-                }))
-              } else if (event.type === "done") {
-                const finalContent = typeof event.payload.message?.content === "string" ? event.payload.message.content : accumulatedText
-                const finalToolCalls = normalizeToolCalls(event.payload.tool_call_details)
-                updateSession(session.id, (current) => ({
-                  ...current,
-                  messages: current.messages.map((message) =>
-                    message.id === assistantMessageID
-                      ? { ...message, content: finalContent || copy.emptyResponse, tool_calls: finalToolCalls }
-                      : message
-                  ),
-                }))
-              } else if (event.type === "error") {
-                throw new Error(typeof event.payload.error === "string" ? event.payload.error : copy.sendFailed)
-              }
+              handleStreamEvent(parseSSEEvent(part))
             }
+          }
+          if (buffer.trim()) {
+            handleStreamEvent(parseSSEEvent(buffer))
           }
         } catch (err) {
           if (err instanceof DOMException && err.name === "AbortError") {
@@ -985,10 +962,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
 
   const saveEditedMessage = () => {
     const content = editingContent.trim()
-    if (!activeSession || !editingMessageID || !content) {
+    if (!currentSession || !editingMessageID || !content) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       messages: session.messages.map((message) =>
         message.id === editingMessageID ? { ...message, content, updated_at: new Date().toISOString() } : message
@@ -998,10 +975,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }
 
   const deleteMessage = (messageID: string) => {
-    if (!activeSession) {
+    if (!currentSession) {
       return
     }
-    updateSession(activeSession.id, (session) => ({
+    updateSession(currentSession.id, (session) => ({
       ...session,
       messages: session.messages.filter((message) => message.id !== messageID),
     }), { persist: true })
@@ -1098,8 +1075,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
               <Server size={15} />
               <span className="truncate">{copy.connectedDevices}</span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => { setConfigTab("device"); setIsConfigOpen(true) }}>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/chat/devices">
               {copy.devices}
+              </Link>
             </Button>
           </div>
           {connectorDevices.length === 0 ? (
@@ -1114,7 +1093,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                       {device.online ? copy.deviceOnline : copy.deviceOffline}
                     </span>
                   </div>
-                  {device.workspaces[0] && <div className="mt-1 truncate text-[11px] text-muted-foreground">{device.workspaces[0]}</div>}
+                  {device.remark && <div className="mt-1 truncate text-[11px] text-muted-foreground">{device.remark}</div>}
                 </div>
               ))}
             </div>
@@ -1213,7 +1192,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             {copy.sessions}
           </Button>
           {isAdvanced && (
-            <Button variant="outline" className="gap-2" onClick={() => setIsConfigOpen(true)}>
+            <Button variant="outline" className="gap-2" onClick={() => openAdvancedConfig()}>
               <Settings size={16} />
               {copy.config}
             </Button>
@@ -1249,10 +1228,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="min-h-[360px] space-y-3 rounded-md border p-3">
-                {!activeSession || activeSession.messages.length === 0 ? (
+                {!currentSession || currentSession.messages.length === 0 ? (
                   <div className="py-20 text-center text-sm text-muted-foreground">{copy.noMessages}</div>
                 ) : (
-                  activeSession.messages.map((message) => (
+                  currentSession.messages.map((message) => (
                     <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
                       <div className="max-w-[92%] rounded-md border bg-background p-3 text-sm">
                         <div className="flex items-start gap-2">
@@ -1437,7 +1416,13 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => setConfigTab(tab)}
+                    onClick={() => {
+                      if (tab === "device") {
+                        setPendingConnectorDeviceID(currentSession?.connector_device_id || connectorDevices[0]?.id || "")
+                        setPendingConnectorWorkspace(currentSession?.connector_workspace_path || "")
+                      }
+                      setConfigTab(tab)
+                    }}
                     className={cn(
                       "h-9 rounded-md border px-3 text-sm transition-colors hover:bg-muted",
                       configTab === tab && "border-primary bg-primary/5 text-primary"
@@ -1474,8 +1459,8 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                       onChange={(event) => {
                         const nextID = Number(event.target.value) || 0
                         setSelectedUserChannelID(nextID)
-                        if (activeSession) {
-                          updateSession(activeSession.id, (session) => ({ ...session, user_channel_id: nextID || undefined }), { persist: true })
+                        if (currentSession) {
+                          updateSession(currentSession.id, (session) => ({ ...session, user_channel_id: nextID || undefined }), { persist: true })
                         }
                       }}
                     >
@@ -1608,7 +1593,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                         </div>
                       ))}
                       {enabledMCPServers
-                        .filter((server) => skillMCPServerIDs.includes(server.id) && !activeSession?.mcp_server_ids.includes(server.id))
+                        .filter((server) => skillMCPServerIDs.includes(server.id) && !currentSession?.mcp_server_ids.includes(server.id))
                         .map((server) => (
                           <div key={`skill-${server.id}`} className="rounded-md border bg-muted/40 p-3">
                             <div className="flex min-w-0 items-center gap-2">
@@ -1646,27 +1631,19 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-sm font-medium">
                       <Server size={15} />
-                      {copy.connectedDevices}
+                      {copy.sessionDevice}
                     </div>
-                    <Button variant="outline" size="sm" onClick={createConnectorToken} disabled={isCreatingConnectorToken}>
-                      {isCreatingConnectorToken ? copy.creatingConnectorToken : copy.createConnectorToken}
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/chat/devices">{copy.manageDevices}</Link>
                     </Button>
                   </div>
 
-                  {connectorToken && (
-                    <div className="space-y-2 rounded-md border bg-muted/30 p-3 text-xs">
-                      <div className="font-medium text-foreground">{copy.connectorToken}</div>
-                      <div className="break-all rounded-md bg-background p-2 font-mono">{connectorToken}</div>
-                      <div className="font-medium text-foreground">{copy.connectorCommand}</div>
-                      <div className="break-all rounded-md bg-background p-2 font-mono">{connectorCommand}</div>
-                    </div>
-                  )}
-
-                  {selectedConnectorDevice && activeSession?.connector_workspace_path ? (
+                  {selectedConnectorDevice && currentSession?.connector_workspace_path ? (
                     <div className="grid grid-cols-[1fr_auto] gap-2 rounded-md border p-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">{selectedConnectorDevice.name}</div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">{activeSession.connector_workspace_path}</div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">{currentSession.connector_workspace_path}</div>
+                        {selectedConnectorDevice.remark && <div className="mt-1 truncate text-xs text-muted-foreground">{selectedConnectorDevice.remark}</div>}
                         <div className={cn("mt-1 text-xs", selectedConnectorDevice.online ? "text-emerald-600" : "text-muted-foreground")}>
                           {selectedConnectorDevice.online ? copy.deviceOnline : copy.deviceOffline}
                         </div>
@@ -1679,66 +1656,42 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                     <div className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">{copy.noDeviceSelected}</div>
                   )}
 
-                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                    <select
-                      className="h-10 rounded-md border bg-background px-3 text-sm"
-                      value={pendingConnectorDeviceID}
-                      onChange={(event) => {
-                        const nextID = event.target.value
-                        setPendingConnectorDeviceID(nextID)
-                        const nextDevice = connectorDevices.find((device) => device.id === nextID)
-                        setPendingConnectorWorkspace(nextDevice?.workspaces[0] || "")
-                      }}
-                    >
-                      <option value="">{availableConnectorDevices.length ? copy.selectDevice : copy.noDevices}</option>
-                      {availableConnectorDevices.map((device) => (
-                        <option key={device.id} value={device.id}>
-                          {device.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="h-10 rounded-md border bg-background px-3 text-sm"
-                      value={pendingConnectorWorkspace}
-                      onChange={(event) => setPendingConnectorWorkspace(event.target.value)}
-                    >
-                      <option value="">{pendingConnectorDevice ? copy.selectWorkspace : copy.noWorkspaces}</option>
-                      {(pendingConnectorDevice?.workspaces || []).map((workspace) => (
-                        <option key={workspace} value={workspace}>
-                          {workspace}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      className="gap-2"
-                      disabled={!pendingConnectorDeviceID || !pendingConnectorWorkspace}
-                      onClick={() => setSessionConnector(pendingConnectorDeviceID, pendingConnectorWorkspace)}
-                    >
-                      <Check size={16} />
-                      {copy.setDevice}
-                    </Button>
-                  </div>
-
-                  {connectorDevices.length > 0 && (
-                    <div className="space-y-2">
-                      {connectorDevices.map((device) => (
-                        <div key={device.id} className="rounded-md border p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0 truncate text-sm font-medium">{device.name}</div>
-                            <span className={cn("shrink-0 text-xs", device.online ? "text-emerald-600" : "text-muted-foreground")}>
-                              {device.online ? copy.deviceOnline : copy.deviceOffline}
-                            </span>
-                          </div>
-                          <div className="mt-1 truncate text-xs text-muted-foreground">{[device.hostname, device.os, device.arch].filter(Boolean).join(" / ")}</div>
-                          <div className="mt-2 space-y-1">
-                            {device.workspaces.map((workspace) => (
-                              <div key={workspace} className="truncate rounded bg-muted/40 px-2 py-1 text-xs text-muted-foreground">{workspace}</div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                  <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{copy.selectDevice}</span>
+                      <select
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={pendingConnectorDeviceID}
+                        onChange={(event) => setPendingConnectorDeviceID(event.target.value)}
+                      >
+                        <option value="">{selectableConnectorDevices.length ? copy.selectDevice : copy.noDevices}</option>
+                        {selectableConnectorDevices.map((device) => (
+                          <option key={device.id} value={device.id}>
+                            {device.name}{device.online ? "" : ` (${copy.deviceOffline})`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-sm">
+                      <span className="font-medium">{copy.workspacePath}</span>
+                      <input
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={pendingConnectorWorkspace}
+                        placeholder={copy.workspacePathPlaceholder}
+                        onChange={(event) => setPendingConnectorWorkspace(event.target.value)}
+                      />
+                    </label>
+                    <div className="flex items-end">
+                      <Button
+                        className="w-full gap-2"
+                        disabled={!pendingConnectorDeviceID || !pendingConnectorWorkspace.trim()}
+                        onClick={() => setSessionConnector(pendingConnectorDeviceID, pendingConnectorWorkspace.trim())}
+                      >
+                        <Check size={16} />
+                        {copy.setDevice}
+                      </Button>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1764,7 +1717,7 @@ type MarkdownBlock =
 function MarkdownContent({ content }: { content: string }) {
   const blocks = parseMarkdownBlocks(content)
   if (blocks.length === 0) {
-    return <div className="text-muted-foreground">-</div>
+    return null
   }
   return (
     <div className="space-y-2 break-words leading-relaxed">
@@ -2049,7 +2002,7 @@ function readStoredSessions(storeKey = sessionsStoreKey, includeLegacy = true): 
     const now = new Date().toISOString()
     return [{ id: createID(), title: "", messages: legacyMessages, run_mode: "chat", skill_ids: [], mcp_server_ids: [], created_at: now, updated_at: now }]
   }
-  return [createSession()]
+  return []
 }
 
 function readLegacyMessages(): ChatMessage[] {
@@ -2313,13 +2266,13 @@ function normalizeConnectorDevice(value: unknown): ConnectorDevice | null {
   return {
     id,
     name: stringFromUnknown(value.name) || "Local device",
+    remark: stringFromUnknown(value.remark) || undefined,
     hostname: stringFromUnknown(value.hostname) || undefined,
     os: stringFromUnknown(value.os) || undefined,
     arch: stringFromUnknown(value.arch) || undefined,
     version: stringFromUnknown(value.version) || undefined,
     status: stringFromUnknown(value.status) || "offline",
     online: value.online === true,
-    workspaces: stringArrayFromUnknown(value.workspaces),
     last_seen_at: stringFromUnknown(value.last_seen_at) || undefined,
   }
 }
@@ -2595,11 +2548,17 @@ function runStatusText(run: ChatRun, copy: ChatCopy) {
 }
 
 function messageDisplayContent(message: ChatMessage, run: ChatRun | undefined, copy: ChatCopy) {
-  if (message.content) {
+  if (message.content.trim()) {
     return message.content
   }
   if (run && isRunActive(run) && run.assistant_message_id === message.id) {
     return runStatusText(run, copy)
+  }
+  if (run?.status === "failed" && run.assistant_message_id === message.id) {
+    return run.error_message || copy.sendFailed
+  }
+  if (message.role === "assistant") {
+    return copy.emptyResponse
   }
   return message.content
 }
@@ -2767,6 +2726,8 @@ const chatCopyKeys = {
   fromSkill: "chat.fromSkill",
   devices: "chat.devices",
   connectedDevices: "chat.connectedDevices",
+  sessionDevice: "chat.sessionDevice",
+  manageDevices: "chat.manageDevices",
   createConnectorToken: "chat.createConnectorToken",
   creatingConnectorToken: "chat.creatingConnectorToken",
   connectorToken: "chat.connectorToken",
@@ -2778,6 +2739,8 @@ const chatCopyKeys = {
   selectDevice: "chat.selectDevice",
   noDevices: "chat.noDevices",
   selectWorkspace: "chat.selectWorkspace",
+  workspacePath: "chat.workspacePath",
+  workspacePathPlaceholder: "chat.workspacePathPlaceholder",
   noWorkspaces: "chat.noWorkspaces",
   setDevice: "chat.setDevice",
   deviceOnline: "chat.deviceOnline",
