@@ -88,6 +88,10 @@ interface MetaModel {
   name: string
   description: string
   dsl: string
+  provider: string
+  provider_name: string
+  provider_icon_url: string
+  expose_referenced_models: boolean
   billing_mode: string
   input_price: string | number
   output_price: string | number
@@ -109,6 +113,10 @@ interface MetaModelDraft {
   name: string
   description: string
   dsl: string
+  provider: string
+  provider_name: string
+  provider_icon_url: string
+  expose_referenced_models: boolean
   billing_mode: string
   input_price: string
   output_price: string
@@ -337,6 +345,10 @@ const defaultMetaModelDraft: MetaModelDraft = {
   name: "",
   description: "",
   dsl: "",
+  provider: "meta",
+  provider_name: "Meta Module",
+  provider_icon_url: "",
+  expose_referenced_models: true,
   billing_mode: "actual",
   input_price: "0",
   output_price: "0",
@@ -1462,9 +1474,11 @@ export default function SystemManagement({ section = "general", initialTab }: { 
             </div>
 
             <div className="overflow-x-auto rounded-md border">
-              <div className="min-w-[920px]">
-                <div className="grid grid-cols-[1fr_120px_130px_130px_130px_120px_190px] border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
+              <div className="min-w-[1120px]">
+                <div className="grid grid-cols-[1fr_170px_120px_120px_130px_130px_130px_120px_190px] border-b bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground">
                   <div>{copy.metaModelName}</div>
+                  <div>{copy.metaModelProvider}</div>
+                  <div>{copy.metaModelReferencedVisibility}</div>
                   <div>{copy.billingMode}</div>
                   <div>{copy.inputPrice}</div>
                   <div>{copy.outputPrice}</div>
@@ -1476,11 +1490,16 @@ export default function SystemManagement({ section = "general", initialTab }: { 
                   <div className="px-3 py-8 text-center text-sm text-muted-foreground">{copy.noMetaModels}</div>
                 ) : (
                   metaModels.map((item) => (
-                    <div key={item.id} className="grid grid-cols-[1fr_120px_130px_130px_130px_120px_190px] items-center border-b px-3 py-3 text-sm last:border-b-0">
+                    <div key={item.id} className="grid grid-cols-[1fr_170px_120px_120px_130px_130px_130px_120px_190px] items-center border-b px-3 py-3 text-sm last:border-b-0">
                       <div className="min-w-0">
                         <div className="truncate font-mono text-xs font-medium">{item.name}</div>
                         <div className="truncate text-xs text-muted-foreground">{item.description || "-"}</div>
                       </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-medium">{item.provider_name || "Meta Module"}</div>
+                        <div className="truncate font-mono text-xs text-muted-foreground">{item.provider || "meta"}</div>
+                      </div>
+                      <div>{item.expose_referenced_models ? copy.visible : copy.hidden}</div>
                       <div>{metaBillingModeLabel(item.billing_mode, copy)}</div>
                       <div>{formatMetaPriceValue(item)}</div>
                       <div>{formatMetaPriceValue(item, "output_price")}</div>
@@ -2214,6 +2233,29 @@ function MetaModelDialog({
             </label>
           </div>
           <TextField label={copy.description} value={draft.description} placeholder={copy.metaModelDescriptionPlaceholder} onChange={(value) => onDraftChange({ ...draft, description: value })} />
+          <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+            <div>
+              <div className="text-sm font-medium">{copy.metaModelPublicDisplay}</div>
+              <div className="text-xs text-muted-foreground">{copy.metaModelPublicDisplayHelp}</div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <TextField label={copy.metaModelProviderID} value={draft.provider} placeholder="openai" onChange={(value) => onDraftChange({ ...draft, provider: value })} />
+              <TextField label={copy.metaModelProviderName} value={draft.provider_name} placeholder="OpenAI" onChange={(value) => onDraftChange({ ...draft, provider_name: value })} />
+              <TextField label={copy.metaModelProviderIconURL} value={draft.provider_icon_url} placeholder="https://example.com/icon.png" onChange={(value) => onDraftChange({ ...draft, provider_icon_url: value })} />
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={draft.expose_referenced_models}
+                onChange={(event) => onDraftChange({ ...draft, expose_referenced_models: event.target.checked })}
+              />
+              <span>
+                <span className="block font-medium">{copy.metaModelExposeReferencedModels}</span>
+                <span className="block text-xs leading-5 text-muted-foreground">{copy.metaModelExposeReferencedModelsHelp}</span>
+              </span>
+            </label>
+          </div>
           {draft.billing_mode === "meta" && (
             <div className="grid gap-3 md:grid-cols-3">
               <TextField label={copy.inputPrice} value={draft.input_price} placeholder="0" type="number" onChange={(value) => onDraftChange({ ...draft, input_price: value })} />
@@ -2456,6 +2498,10 @@ function metaModelPayload(draft: MetaModelDraft) {
     name: draft.name.trim(),
     description: draft.description.trim(),
     dsl: draft.dsl.trim(),
+    provider: draft.provider.trim() || "meta",
+    provider_name: draft.provider_name.trim() || "Meta Module",
+    provider_icon_url: draft.provider_icon_url.trim(),
+    expose_referenced_models: draft.expose_referenced_models,
     billing_mode: draft.billing_mode,
     input_price: isMetaBilling ? Number(draft.input_price || 0) : 0,
     output_price: isMetaBilling ? Number(draft.output_price || 0) : 0,
@@ -2470,6 +2516,10 @@ function metaModelToDraft(item: MetaModel): MetaModelDraft {
     name: item.name,
     description: item.description || "",
     dsl: item.dsl || "",
+    provider: item.provider || "meta",
+    provider_name: item.provider_name || "Meta Module",
+    provider_icon_url: item.provider_icon_url || "",
+    expose_referenced_models: item.expose_referenced_models ?? true,
     billing_mode: item.billing_mode || "actual",
     input_price: String(item.input_price ?? 0),
     output_price: String(item.output_price ?? 0),
@@ -2982,6 +3032,15 @@ const zhCopy = {
   metaModelNamePlaceholder: "例如 meta-smart",
   description: "描述",
   metaModelDescriptionPlaceholder: "说明这个元模型的用途",
+  metaModelProvider: "公开供应商",
+  metaModelReferencedVisibility: "底层模型",
+  metaModelPublicDisplay: "公开展示",
+  metaModelPublicDisplayHelp: "控制模型广场和公开模型目录里的展示信息，不影响元模型运行。",
+  metaModelProviderID: "供应商标识",
+  metaModelProviderName: "供应商名称",
+  metaModelProviderIconURL: "供应商图标 URL",
+  metaModelExposeReferencedModels: "展示底层模型列表",
+  metaModelExposeReferencedModelsHelp: "关闭后 /api/public/models 不会返回 referenced_models，模型广场也不会显示元模型背后的真实模型列表。",
   billingMode: "计费模式",
   billingModeActual: "按实际调用模型计费",
   billingModeMeta: "按元模型独立价格计费",
@@ -3043,6 +3102,8 @@ const zhCopy = {
   usage: "使用次数",
   expiresAt: "过期时间",
   status: "状态",
+  visible: "显示",
+  hidden: "隐藏",
   enabled: "启用",
   disabled: "禁用",
 }
@@ -3295,6 +3356,15 @@ const enCopy: SystemCopy = {
   metaModelNamePlaceholder: "For example, meta-smart",
   description: "Description",
   metaModelDescriptionPlaceholder: "Describe what this meta model is for",
+  metaModelProvider: "Public provider",
+  metaModelReferencedVisibility: "Base models",
+  metaModelPublicDisplay: "Public display",
+  metaModelPublicDisplayHelp: "Controls how the model appears in the public catalog and model marketplace. It does not change runtime routing.",
+  metaModelProviderID: "Provider ID",
+  metaModelProviderName: "Provider name",
+  metaModelProviderIconURL: "Provider icon URL",
+  metaModelExposeReferencedModels: "Show base model list",
+  metaModelExposeReferencedModelsHelp: "When disabled, /api/public/models will not return referenced_models and the model marketplace will not show the real models behind this meta model.",
   billingMode: "Billing mode",
   billingModeActual: "Bill actual called model",
   billingModeMeta: "Bill meta model prices",
@@ -3356,6 +3426,8 @@ const enCopy: SystemCopy = {
   usage: "Usage",
   expiresAt: "Expires",
   status: "Status",
+  visible: "Visible",
+  hidden: "Hidden",
   enabled: "Enabled",
   disabled: "Disabled",
 }

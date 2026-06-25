@@ -198,7 +198,7 @@ export default function ModelCatalog() {
                       <CardTitle className="break-all font-mono text-lg">{item.model_name}</CardTitle>
                       <div className="flex flex-wrap items-center gap-2">
                         <Provider providerName={item.provider_name} iconURL={item.provider_icon_url} />
-                        {item.is_meta_model && <MetaModelBadge copy={copy} mode={item.meta_billing_mode} />}
+                        {showsMetaModelDetails(item) && <MetaModelBadge copy={copy} mode={item.meta_billing_mode} />}
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-sm sm:min-w-80">
@@ -248,7 +248,7 @@ function ModelDetailDialog({
             <div className="space-y-5">
               <div className="flex flex-wrap items-center gap-3">
                 <Provider providerName={model.provider_name} iconURL={model.provider_icon_url} />
-                {model.is_meta_model && <MetaModelBadge copy={copy} mode={model.meta_billing_mode} />}
+                {showsMetaModelDetails(model) && <MetaModelBadge copy={copy} mode={model.meta_billing_mode} />}
               </div>
               {model.description && <p className="text-sm text-muted-foreground">{model.description}</p>}
 
@@ -261,7 +261,7 @@ function ModelDetailDialog({
                 </div>
               </section>
 
-              {model.is_meta_model && (
+              {showsMetaModelDetails(model) && (
                 <section className="space-y-3">
                   <div>
                     <div className="text-sm font-medium">{copy.referencedModels}</div>
@@ -502,6 +502,10 @@ function searchableText(model: PublicModel) {
 
 function providerKey(model: PublicModel) {
   return model.provider || model.provider_name || ""
+}
+
+function showsMetaModelDetails(model: PublicModel) {
+  return Boolean(model.is_meta_model && (model.referenced_models || []).length > 0)
 }
 
 function sortOptions(copy: typeof zhCopy): SelectOption[] {
