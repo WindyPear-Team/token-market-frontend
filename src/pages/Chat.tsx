@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { createPortal } from "react-dom"
-import { Link } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ArrowDown, Bot, Check, Menu, MessageSquarePlus, Paperclip, Pencil, Plus, Send, Server, Settings, Sparkles, Trash2, User, X } from "lucide-react"
 import api from "@/lib/api"
 import { useI18n, type TranslationKey } from "@/lib/i18n"
@@ -236,12 +236,22 @@ const chatStoreKeys: Record<ChatMode, ChatStoreKeys> = {
 export default function Chat({ variant = "basic" }: ChatProps) {
   const isAdvanced = variant === "advanced"
   const storeKeys = chatStoreKeys[variant]
+  const navigate = useNavigate()
+  const location = useLocation()
+  const routeSessionID = isAdvanced ? sessionIDFromAdvancedChatPath(location.pathname) : ""
+  const requestedAgentID = isAdvanced ? new URLSearchParams(location.search).get("agent_id") || "" : ""
   const { t } = useI18n()
   const copy = useMemo(() => buildChatCopy(t), [t])
   const { error } = useToast()
   const [sessions, setSessions] = useState<ChatSession[]>(() => (variant === "advanced" ? [] : readStoredSessions(storeKeys.sessions, true)))
   const [draftSession, setDraftSession] = useState<ChatSession>(() => createSession())
-  const [activeSessionID, setActiveSessionID] = useState(() => localStorage.getItem(storeKeys.selectedSession) || "")
+  const [storedActiveSessionID, setStoredActiveSessionID] = useState(() => localStorage.getItem(storeKeys.selectedSession) || "")
+  const activeSessionID = isAdvanced ? routeSessionID : storedActiveSessionID
+  const setActiveSessionID = (sessionID: string) => {
+    if (!isAdvanced) {
+      setStoredActiveSessionID(sessionID)
+    }
+  }
   const [modelName, setModelName] = useState(() => localStorage.getItem(storeKeys.model) || "")
   const [endpointMode, setEndpointMode] = useState<ChatEndpoint>(() => readStoredEndpoint(storeKeys.endpoint))
   const [selectedAPIKeyID, setSelectedAPIKeyID] = useState(() => Number(localStorage.getItem(storeKeys.apiKey) || 0))
@@ -286,7 +296,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     },
   })
 
-  const { data: agents = [] } = useQuery<ChatAgent[]>({
+  const { data: agents = [], isFetched: agentsFetched } = useQuery<ChatAgent[]>({
     queryKey: agentsQueryKey,
     enabled: isAdvanced,
     queryFn: async () => {
@@ -351,7 +361,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     () => sessions.find((session) => session.id === activeSessionID),
     [sessions, activeSessionID]
   )
-  const currentSession = activeSession || draftSession
+  const currentSession = activeSession || (isAdvanced && routeSessionID ? undefined : draftSession)
   const latestMessage = currentSession?.messages[currentSession.messages.length - 1]
   const latestMessageSignal = useMemo(
     () => [
@@ -403,6 +413,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     },
   })
   const activeModelName = isAdvanced ? currentSession?.model_name || selectedAgent?.default_model || modelName : modelName
+  const modelSelectOptions = useMemo(
+    () => activeModelName && !modelOptions.includes(activeModelName) ? [activeModelName, ...modelOptions] : modelOptions,
+    [activeModelName, modelOptions]
+  )
   const selectableUserChannels = useMemo(
     () => catalog.filter((channel) => !activeModelName || channel.models.includes(activeModelName)),
     [activeModelName, catalog]
@@ -456,10 +470,13 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!isAdvanced || !serverSessionsFetched || serverSessions.length === 0) {
       return
     }
-    setSessions((current) => mergeServerSessions(current, serverSessions))
-  }, [isAdvanced, serverSessions, serverSessionsFetched])
+    setSessions((current) => mergeServerSessions(current, serverSessions, activeSessionID))
+  }, [activeSessionID, isAdvanced, serverSessions, serverSessionsFetched])
 
   useEffect(() => {
+    if (isAdvanced) {
+      return
+    }
     if (activeSessionID && !sessions.some((session) => session.id === activeSessionID) && sessions[0]) {
       setActiveSessionID(sessions[0].id)
       return
@@ -467,15 +484,18 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (activeSessionID && sessions.length === 0) {
       setActiveSessionID("")
     }
-  }, [activeSessionID, sessions])
+  }, [activeSessionID, isAdvanced, sessions])
 
   useEffect(() => {
+    if (isAdvanced) {
+      return
+    }
     if (activeSessionID) {
       localStorage.setItem(storeKeys.selectedSession, activeSessionID)
     } else {
       localStorage.removeItem(storeKeys.selectedSession)
     }
-  }, [activeSessionID, storeKeys.selectedSession])
+  }, [activeSessionID, isAdvanced, storeKeys.selectedSession])
 
   const messagesScrollElement = () => {
     const marker = messagesEndRef.current
@@ -529,10 +549,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [latestMessageSignal, showJumpToLatest])
 
   useEffect(() => {
-    if (!isAdvanced && modelName) {
+    if (modelName) {
       localStorage.setItem(storeKeys.model, modelName)
     }
-  }, [isAdvanced, modelName, storeKeys.model])
+  }, [modelName, storeKeys.model])
 
   useEffect(() => {
     localStorage.setItem(storeKeys.endpoint, endpointMode)
@@ -581,13 +601,16 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }, [currentSession?.id, currentSession?.user_channel_id, isAdvanced, selectedUserChannelID])
 
   useEffect(() => {
-    if (!isAdvanced && !modelName && modelOptions.length > 0) {
+    if (!modelName && modelOptions.length > 0) {
       setModelName(modelOptions[0])
     }
-  }, [isAdvanced, modelName, modelOptions])
+  }, [modelName, modelOptions])
 
   useEffect(() => {
     if (!isAdvanced) {
+      return
+    }
+    if (!agentsFetched) {
       return
     }
     if (selectedAgentID && agents.some((agent) => agent.id === selectedAgentID)) {
@@ -596,15 +619,38 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     }
     setSelectedAgentID("")
     localStorage.removeItem(selectedAgentStoreKey)
-  }, [agents, isAdvanced, selectedAgentID])
+  }, [agents, agentsFetched, isAdvanced, selectedAgentID])
+
+  useEffect(() => {
+    if (!isAdvanced || !requestedAgentID || !agentsFetched) {
+      return
+    }
+    const agent = agents.find((item) => item.id === requestedAgentID)
+    if (!agent) {
+      navigate("/chat", { replace: true })
+      return
+    }
+    const session = createSession({
+      agentID: agent.id,
+      modelName: agent.default_model || modelName || modelOptions[0] || "",
+    })
+    setDraftSession(session)
+    setActiveSessionID("")
+    setSelectedAgentID(agent.id)
+    setIsSessionsSidebarOpen(false)
+    setPrompt("")
+    setAttachments([])
+    cancelEdit()
+    navigate("/chat", { replace: true })
+  }, [agents, agentsFetched, isAdvanced, modelName, modelOptions, navigate, requestedAgentID])
 
   useEffect(() => {
     if (!isAdvanced || !currentSession || currentSession.model_name || modelOptions.length === 0) {
       return
     }
-    const defaultModel = selectedAgent?.default_model || modelOptions[0]
+    const defaultModel = selectedAgent?.default_model || modelName || modelOptions[0]
     updateSession(currentSession.id, (session) => ({ ...session, model_name: defaultModel }))
-  }, [currentSession, isAdvanced, modelOptions, selectedAgent?.default_model])
+  }, [currentSession, isAdvanced, modelName, modelOptions, selectedAgent?.default_model])
 
   useEffect(() => {
     if (!pendingAgentID && agents[0]) {
@@ -644,7 +690,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
 
   const createNewSession = () => {
     const session = createSession({
-      modelName: isAdvanced ? modelOptions[0] || modelName : undefined,
+      modelName: isAdvanced ? modelName || modelOptions[0] || "" : undefined,
     })
     setDraftSession(session)
     setActiveSessionID("")
@@ -652,6 +698,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     setPrompt("")
     setAttachments([])
     cancelEdit()
+    if (isAdvanced && location.pathname !== "/chat") {
+      navigate("/chat")
+    }
   }
 
   const deleteSession = (sessionID: string) => {
@@ -660,7 +709,12 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     }
     const nextSessions = sessions.filter((session) => session.id !== sessionID)
     setSessions(nextSessions)
-    if (activeSessionID === sessionID || !nextSessions.some((session) => session.id === activeSessionID)) {
+    if (isAdvanced) {
+      if (routeSessionID === sessionID) {
+        const nextID = nextSessions[0]?.id || ""
+        navigate(nextID ? `/chat/session/${encodeURIComponent(nextID)}` : "/chat", { replace: true })
+      }
+    } else if (activeSessionID === sessionID || !nextSessions.some((session) => session.id === activeSessionID)) {
       setActiveSessionID(nextSessions[0]?.id || "")
     }
     cancelEdit()
@@ -700,6 +754,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     }
     if (options.materialize) {
       setActiveSessionID(sessionID)
+      if (isAdvanced && !routeSessionID) {
+        navigate(`/chat/session/${encodeURIComponent(sessionID)}`, { replace: true })
+      }
     }
     if (options.persist && persistedSession && existingSession) {
       persistAdvancedSession(persistedSession)
@@ -708,6 +765,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
 
   const selectSession = (sessionID: string) => {
     setActiveSessionID(sessionID)
+    if (isAdvanced) {
+      navigate(`/chat/session/${encodeURIComponent(sessionID)}`)
+    }
     setIsSessionsSidebarOpen(false)
     cancelEdit()
   }
@@ -721,7 +781,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     updateSession(currentSession.id, (session) => ({
       ...session,
       agent_id: agentID || undefined,
-      model_name: agent?.default_model || session.model_name || modelOptions[0] || "",
+      model_name: agent?.default_model || session.model_name || modelName || modelOptions[0] || "",
     }), { persist: true })
   }
 
@@ -729,6 +789,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!currentSession) {
       return
     }
+    setSelectedAgentID("")
     updateSession(currentSession.id, (session) => ({
       ...session,
       agent_id: undefined,
@@ -736,6 +797,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }
 
   const handleSessionModelChange = (value: string) => {
+    if (value.trim()) {
+      setModelName(value.trim())
+    }
     if (isAdvanced && currentSession) {
       updateSession(currentSession.id, (session) => ({ ...session, model_name: value }), { persist: true })
       return
@@ -887,7 +951,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     }
     setIsStopping(true)
     abortControllerRef.current?.abort()
-    if (isAdvanced && activeRunID) {
+    if (isAdvanced && activeRunID && currentSession) {
       try {
         const res = await api.post(`/user/advanced-chat/runs/${encodeURIComponent(activeRunID)}/stop`)
         const stoppedRun = normalizeRun(res.data)
@@ -917,6 +981,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!resolvedModel) {
       error(copy.modelRequired)
       return
+    }
+    if (!selectedAgent?.default_model) {
+      setModelName(resolvedModel)
     }
     if (isAdvanced && !selectedUserChannel) {
       error(copy.channelRequired)
@@ -992,6 +1059,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             if (serverSession) {
               setSessions((current) => upsertSession(current, serverSession))
               setActiveSessionID(serverSession.id)
+              navigate(`/chat/session/${encodeURIComponent(serverSession.id)}`, { replace: true })
             }
             void refetchAdvancedSessions()
           } catch (err) {
@@ -1269,7 +1337,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
           onChange={(event) => setModelName(event.target.value)}
         >
           <option value="">{copy.selectModel}</option>
-          {modelOptions.map((model) => (
+          {modelSelectOptions.map((model) => (
             <option key={model} value={model}>
               {model}
             </option>
@@ -1429,6 +1497,97 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       <div className="space-y-4">
         {!isAdvanced && basicConfig}
 
+        {isAdvanced && currentSession?.messages.length === 0 ? (
+          <div className="flex min-h-[calc(100vh-14rem)] items-center justify-center py-8">
+            <div className="w-full max-w-3xl rounded-2xl border bg-card p-3 shadow-sm">
+              <textarea
+                className="min-h-36 w-full resize-none rounded-xl border-0 bg-transparent px-3 py-3 text-base outline-none placeholder:text-muted-foreground focus:ring-0"
+                value={prompt}
+                placeholder={activeRunMode === "assistant" ? copy.assistantPromptPlaceholder : copy.promptPlaceholder}
+                disabled={isActiveRunRunning}
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault()
+                    sendMessage()
+                  }
+                }}
+              />
+
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-2 pb-3">
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex max-w-full items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                      <Paperclip size={14} className="shrink-0" />
+                      <span className="truncate">{attachment.name}</span>
+                      <span className="shrink-0 text-muted-foreground">{formatBytes(attachment.size)}</span>
+                      <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => removeAttachment(attachment.id)} aria-label={copy.removeAttachment}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 border-t px-2 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <select
+                    className="h-9 max-w-[min(15rem,100%)] rounded-md border bg-background px-3 text-sm"
+                    value={activeModelName}
+                    onChange={(event) => handleSessionModelChange(event.target.value)}
+                  >
+                    <option value="">{copy.selectModel}</option>
+                    {modelSelectOptions.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="h-9 max-w-[min(15rem,100%)] rounded-md border bg-background px-3 text-sm"
+                    value={currentSession?.agent_id || ""}
+                    onChange={(event) => setSessionAgent(event.target.value)}
+                  >
+                    <option value="">{agents.length ? copy.noAgentSelected : copy.noAgents}</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium text-foreground hover:bg-muted">
+                    <Paperclip size={15} />
+                    {copy.addAttachment}
+                    <input
+                      className="sr-only"
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        handleAttachmentFiles(event.target.files)
+                        event.target.value = ""
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {isStreamActive || isActiveRunRunning || isSending ? (
+                  <div className="flex items-center justify-end gap-2">
+                    <Button variant="outline" className="gap-2" disabled={isStopping} onClick={stopActiveTask}>
+                      <X size={16} />
+                      {copy.stopTask}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">{copy.sending}</span>
+                  </div>
+                ) : (
+                  <Button className="gap-2" disabled={(!prompt.trim() && attachments.length === 0) || isSending || isActiveRunRunning} onClick={sendMessage}>
+                    <Send size={16} />
+                    {activeRunMode === "assistant" ? copy.runAssistant : copy.send}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1597,6 +1756,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
               </div>
             </CardContent>
           </Card>
+        )}
       </div>
 
       <PageInlineSlot slotKey="primary" />
@@ -1647,7 +1807,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                       onChange={(event) => handleSessionModelChange(event.target.value)}
                     >
                       <option value="">{copy.selectModel}</option>
-                      {modelOptions.map((model) => (
+                      {modelSelectOptions.map((model) => (
                         <option key={model} value={model}>
                           {model}
                         </option>
@@ -3228,10 +3388,24 @@ function upsertSession(current: ChatSession[], next: ChatSession) {
   return updated
 }
 
-function mergeServerSessions(current: ChatSession[], serverSessions: ChatSession[]) {
+function mergeServerSessions(current: ChatSession[], serverSessions: ChatSession[], activeSessionID = "") {
   const serverIDs = new Set(serverSessions.map((session) => session.id))
-  const localDrafts = current.filter((session) => !serverIDs.has(session.id) && session.messages.length === 0)
+  const localDrafts = current.filter((session) =>
+    !serverIDs.has(session.id) && (session.messages.length === 0 || session.id === activeSessionID || isRunActive(session.latest_run))
+  )
   return [...localDrafts, ...serverSessions]
+}
+
+function sessionIDFromAdvancedChatPath(pathname: string) {
+  const match = pathname.match(/^\/chat\/session\/([^/]+)$/)
+  if (!match) {
+    return ""
+  }
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
 }
 
 function uniqueModels(catalog: UserChannelCatalog[]) {

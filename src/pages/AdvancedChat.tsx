@@ -50,6 +50,8 @@ export default function AdvancedChat() {
   const publicSettings = withPublicSettingsDefaults(settings)
   const topNavItems = parseTopNavItems(publicSettings.top_nav_items)
   const currentPageKey = pageKeyFromPathname(location.pathname)
+  const isChatRoute = location.pathname === "/chat" || location.pathname.startsWith("/chat/session/")
+  const transitionKey = isChatRoute ? "/chat" : location.pathname
   const layoutEditorLabel = language === "zh" ? (isLayoutEditing ? "退出编辑" : "可视化编辑") : isLayoutEditing ? "Exit editing" : "Visual editing"
 
   return (
@@ -129,17 +131,20 @@ export default function AdvancedChat() {
             </div>
           )}
           <div className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">
-            <PageTransition>
+            <PageTransition transitionKey={transitionKey}>
               <div className="space-y-6">
-                <Routes>
-                  <Route index element={<Chat variant="advanced" />} />
-                  <Route path="agents" element={<Agents />} />
-                  <Route path="skills" element={<Skills />} />
-                  <Route path="mcp" element={<AdvancedChatMCP />} />
-                  <Route path="devices" element={<AdvancedChatDevices />} />
-                  <Route path="images" element={<Images />} />
-                  <Route path="*" element={<Navigate to="/chat" replace />} />
-                </Routes>
+                {isChatRoute ? (
+                  <Chat variant="advanced" />
+                ) : (
+                  <Routes>
+                    <Route path="agents" element={<Agents />} />
+                    <Route path="skills" element={<Skills />} />
+                    <Route path="mcp" element={<AdvancedChatMCP />} />
+                    <Route path="devices" element={<AdvancedChatDevices />} />
+                    <Route path="images" element={<Images />} />
+                    <Route path="*" element={<Navigate to="/chat" replace />} />
+                  </Routes>
+                )}
                 <PageComponentSlots pageKey={currentPageKey} slotKey="after" />
               </div>
             </PageTransition>
@@ -160,7 +165,7 @@ function AdvancedChatSidebar({ className, onNavigate }: { className?: string; on
   const location = useLocation()
   const { t } = useI18n()
   const items = [
-    { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" },
+    { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" || location.pathname.startsWith("/chat/session/") },
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
     { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
     { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },

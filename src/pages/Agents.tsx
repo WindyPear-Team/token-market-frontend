@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bot, Plus, Save, Trash2 } from "lucide-react"
+import { Bot, MessageSquare, Plus, Save, Trash2 } from "lucide-react"
+import { Link } from "react-router-dom"
 import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,19 +66,10 @@ export default function Agents() {
   const modelOptions = useMemo(() => uniqueModels(catalog), [catalog])
   const activeAgent = useMemo(() => agents.find((agent) => agent.id === activeAgentID), [activeAgentID, agents])
 
-  useEffect(() => {
-    if (!defaultModel && modelOptions[0]) {
-      setDefaultModel(modelOptions[0])
-    }
-    if (!createDefaultModel && modelOptions[0]) {
-      setCreateDefaultModel(modelOptions[0])
-    }
-  }, [createDefaultModel, defaultModel, modelOptions])
-
   const openCreateDialog = () => {
     setCreateName(t("chat.defaultAgentName"))
     setCreatePrompt("")
-    setCreateDefaultModel(modelOptions[0] || "")
+    setCreateDefaultModel("")
     setIsCreateOpen(true)
   }
 
@@ -97,7 +89,7 @@ export default function Agents() {
     setActiveAgentID("")
     setName("")
     setPrompt("")
-    setDefaultModel(modelOptions[0] || "")
+    setDefaultModel("")
     setIsEditOpen(false)
   }
 
@@ -106,10 +98,6 @@ export default function Agents() {
     const trimmedModel = createDefaultModel.trim()
     if (!trimmedName) {
       error(t("chat.agentNameRequired"))
-      return
-    }
-    if (!trimmedModel) {
-      error(t("chat.agentDefaultModelRequired"))
       return
     }
 
@@ -143,10 +131,6 @@ export default function Agents() {
     }
     if (!trimmedName) {
       error(t("chat.agentNameRequired"))
-      return
-    }
-    if (!trimmedModel) {
-      error(t("chat.agentDefaultModelRequired"))
       return
     }
 
@@ -222,17 +206,24 @@ export default function Agents() {
                     <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="truncate text-sm font-medium">{agent.name}</span>
                   </div>
-                  <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model || t("chat.noDefaultModel")}</div>
                 </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={deletingAgentID === agent.id}
-                  onClick={() => deleteAgent(agent)}
-                  title={t("chat.deleteAgent")}
-                >
-                  <Trash2 size={15} />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button asChild variant="ghost" size="sm" title={t("chat.chatWithAgent")}>
+                    <Link to={`/chat?agent_id=${encodeURIComponent(agent.id)}`}>
+                      <MessageSquare size={15} />
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deletingAgentID === agent.id}
+                    onClick={() => deleteAgent(agent)}
+                    title={t("chat.deleteAgent")}
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
               </div>
             ))
           )}
@@ -263,7 +254,7 @@ export default function Agents() {
                   value={defaultModel}
                   onChange={(event) => setDefaultModel(event.target.value)}
                 >
-                  <option value="">{t("chat.selectModel")}</option>
+                  <option value="">{t("chat.noDefaultModel")}</option>
                   {modelOptions.map((model) => (
                     <option key={model} value={model}>
                       {model}
@@ -316,7 +307,7 @@ export default function Agents() {
                   value={createDefaultModel}
                   onChange={(event) => setCreateDefaultModel(event.target.value)}
                 >
-                  <option value="">{t("chat.selectModel")}</option>
+                  <option value="">{t("chat.noDefaultModel")}</option>
                   {modelOptions.map((model) => (
                     <option key={model} value={model}>
                       {model}
