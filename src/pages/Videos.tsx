@@ -38,6 +38,13 @@ interface VideoResult {
   status: string
 }
 
+interface VideoTask {
+  id: string
+  status: string
+  cost: string | number
+  upstream_id: string
+}
+
 const modelStoreKey = "windypear.videos.model.v1"
 const sizeStoreKey = "windypear.videos.size.v1"
 const countStoreKey = "windypear.videos.count.v1"
@@ -54,6 +61,7 @@ const videoAspectRatios = ["auto", "16:9", "9:16", "1:1", "4:3", "3:4"]
 export default function Videos() {
   const { language } = useI18n()
   const copy = language === "zh" ? zhCopy : enCopy
+  const taskCopy = language === "zh" ? zhTaskCopy : enTaskCopy
   const { success, error, info } = useToast()
   const [apiKey, setAPIKey] = useState("")
   const [modelName, setModelName] = useState(() => localStorage.getItem(modelStoreKey) || "")
@@ -69,7 +77,9 @@ export default function Videos() {
   const [watermark, setWatermark] = useState(false)
   const [extraParams, setExtraParams] = useState("")
   const [results, setResults] = useState<VideoResult[]>([])
+  const [currentTask, setCurrentTask] = useState<VideoTask | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isRefreshingTask, setIsRefreshingTask] = useState(false)
 
   const { data: catalog = [] } = useQuery<UserChannelCatalog[]>({
     queryKey: ["catalog"],
@@ -132,6 +142,39 @@ export default function Videos() {
     localStorage.setItem(aspectRatioStoreKey, aspectRatio)
   }, [aspectRatio])
 
+  const buildVideoRequestBody = () => {
+    const body: Record<string, unknown> = {
+      model: modelName.trim(),
+      prompt: prompt.trim(),
+      n: count,
+      duration,
+    }
+    if (size !== "auto") {
+      body.size = size
+    }
+    if (quality !== "auto") {
+      body.quality = quality
+    }
+    if (responseFormat !== "auto") {
+      body.response_format = responseFormat
+    }
+    if (aspectRatio !== "auto") {
+      body.aspect_ratio = aspectRatio
+    }
+    if (fps > 0) {
+      body.fps = fps
+    }
+    const parsedSeed = parseOptionalInt(seed)
+    if (parsedSeed !== null) {
+      body.seed = parsedSeed
+    }
+    if (watermark) {
+      body.watermark = true
+    }
+    Object.assign(body, parseExtraParams(extraParams, copy.extraParamsInvalid))
+    return body
+  }
+
   const generateVideos = async () => {
     const rawKey = apiKey.trim()
     const cleanPrompt = prompt.trim()
@@ -151,37 +194,9 @@ export default function Videos() {
 
     setIsGenerating(true)
     try {
-      const body: Record<string, unknown> = {
-        model: cleanModel,
-        prompt: cleanPrompt,
-        n: count,
-        duration,
-      }
-      if (size !== "auto") {
-        body.size = size
-      }
-      if (quality !== "auto") {
-        body.quality = quality
-      }
-      if (responseFormat !== "auto") {
-        body.response_format = responseFormat
-      }
-      if (aspectRatio !== "auto") {
-        body.aspect_ratio = aspectRatio
-      }
-      if (fps > 0) {
-        body.fps = fps
-      }
-      const parsedSeed = parseOptionalInt(seed)
-      if (parsedSeed !== null) {
-        body.seed = parsedSeed
-      }
-      if (watermark) {
-        body.watermark = true
-      }
-      Object.assign(body, parseExtraParams(extraParams, copy.extraParamsInvalid))
+      const body = buildVideoRequestBody()
 
-      const response = await fetch("/v1/videos/generations", {
+      const response = await fetch("/v1/video/generations", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${rawKey}`,
@@ -194,10 +209,14 @@ export default function Videos() {
       if (!response.ok) {
         throw new Error(errorMessage(payload, text, response.status))
       }
+      const task = videoTaskFromPayload(payload)
+      setCurrentTask(task)
       const nextResults = videoResultsFromPayload(payload)
       setResults(nextResults)
       if (nextResults.length > 0) {
         success(copy.generated.replace("{count}", String(nextResults.length)))
+      } else if (task) {
+        info(taskCopy.taskCreated.replace("{id}", task.id))
       } else {
         info(copy.emptyResponse)
       }
@@ -205,6 +224,45 @@ export default function Videos() {
       error(err instanceof Error ? err.message : copy.generateFailed)
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const refreshTask = async () => {
+    const rawKey = apiKey.trim()
+    if (!rawKey) {
+      error(copy.keyRequired)
+      return
+    }
+    if (!currentTask?.id) {
+      return
+    }
+    setIsRefreshingTask(true)
+    try {
+      const response = await fetch(`/v1/video/generations/${encodeURIComponent(currentTask.id)}`, {
+        headers: {
+          Authorization: `Bearer ${rawKey}`,
+        },
+      })
+      const text = await response.text()
+      const payload = parseJSON(text)
+      if (!response.ok) {
+        throw new Error(errorMessage(payload, text, response.status))
+      }
+      const task = videoTaskFromPayload(payload)
+      if (task) {
+        setCurrentTask(task)
+      }
+      const nextResults = videoResultsFromPayload(payload)
+      if (nextResults.length > 0) {
+        setResults(nextResults)
+        success(copy.generated.replace("{count}", String(nextResults.length)))
+      } else {
+        info(taskCopy.taskUpdated)
+      }
+    } catch (err) {
+      error(err instanceof Error ? err.message : taskCopy.refreshFailed)
+    } finally {
+      setIsRefreshingTask(false)
     }
   }
 
@@ -301,6 +359,24 @@ export default function Videos() {
               </Button>
             </CardContent>
           </Card>
+
+          {currentTask && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{taskCopy.task}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1 text-sm">
+                  <div className="font-mono text-xs">{currentTask.id}</div>
+                  <div className="text-muted-foreground">{copy.status}: {currentTask.status || "-"}</div>
+                  {currentTask.upstream_id && <div className="text-muted-foreground">{taskCopy.upstreamID}: {currentTask.upstream_id}</div>}
+                </div>
+                <Button variant="outline" disabled={isRefreshingTask} onClick={refreshTask}>
+                  {isRefreshingTask ? taskCopy.refreshing : taskCopy.refreshStatus}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -519,11 +595,29 @@ function videoResultsFromPayload(payload: unknown): VideoResult[] {
   if (!isRecord(payload)) {
     return []
   }
+  if (isRecord(payload.upstream_response)) {
+    const nested = videoResultsFromPayload(payload.upstream_response)
+    if (nested.length > 0) {
+      return nested
+    }
+  }
   if (Array.isArray(payload.data)) {
     return payload.data.map(videoResultFromItem).filter((item) => item.url || item.b64_json || item.status)
   }
   const item = videoResultFromItem(payload)
   return item.url || item.b64_json || item.status ? [item] : []
+}
+
+function videoTaskFromPayload(payload: unknown): VideoTask | null {
+  if (!isRecord(payload) || typeof payload.id !== "string") {
+    return null
+  }
+  return {
+    id: payload.id,
+    status: firstString(payload.status),
+    cost: typeof payload.cost === "string" || typeof payload.cost === "number" ? payload.cost : 0,
+    upstream_id: firstString(payload.upstream_id, payload.upstream_task_id),
+  }
 }
 
 function videoResultFromItem(value: unknown): VideoResult {
@@ -688,4 +782,24 @@ const enCopy: typeof zhCopy = {
   generated: "Generated {count} videos",
   emptyResponse: "Empty response",
   extraParamsInvalid: "Extra params must be a JSON object",
+}
+
+const zhTaskCopy = {
+  task: "任务",
+  taskCreated: "任务已创建：{id}",
+  taskUpdated: "任务状态已更新",
+  refreshStatus: "刷新状态",
+  refreshing: "刷新中",
+  refreshFailed: "刷新状态失败",
+  upstreamID: "上游任务",
+}
+
+const enTaskCopy: typeof zhTaskCopy = {
+  task: "Task",
+  taskCreated: "Task created: {id}",
+  taskUpdated: "Task status updated",
+  refreshStatus: "Refresh status",
+  refreshing: "Refreshing",
+  refreshFailed: "Failed to refresh status",
+  upstreamID: "Upstream task",
 }
