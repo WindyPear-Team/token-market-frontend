@@ -55,6 +55,7 @@ export interface PublicSettings {
   sidebar_channels_enabled: boolean
   sidebar_models_enabled: boolean
   sidebar_users_enabled: boolean
+  message_channel_enabled: boolean
   referral_enabled: boolean
   referral_commission_rate: string
   group_multiplier_mode: string
@@ -137,6 +138,7 @@ export const defaultPublicSettings: PublicSettings = {
   sidebar_channels_enabled: true,
   sidebar_models_enabled: true,
   sidebar_users_enabled: true,
+  message_channel_enabled: false,
   referral_enabled: false,
   referral_commission_rate: "0",
   group_multiplier_mode: "min",

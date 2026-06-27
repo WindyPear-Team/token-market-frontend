@@ -10,6 +10,7 @@ import AdvancedChatFiles from "./AdvancedChatFiles"
 import Images from "./Images"
 import Videos from "./Videos"
 import AdvancedChatDevices from "./AdvancedChatDevices"
+import MessageChannels from "./MessageChannels"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ThemeSwitcher } from "@/components/ThemeSwitcher"
 import { Button } from "@/components/ui/button"
@@ -109,7 +110,7 @@ export default function AdvancedChat() {
 
       <div className="flex min-h-0 flex-1">
         <div className="hidden lg:block lg:h-full lg:shrink-0">
-          <AdvancedChatSidebar />
+          <AdvancedChatSidebar publicSettings={publicSettings} />
         </div>
 
         {isSidebarOpen && (
@@ -121,7 +122,7 @@ export default function AdvancedChat() {
               onClick={() => setIsSidebarOpen(false)}
             />
             <div className="relative z-50 h-full w-72 max-w-[85vw]">
-              <AdvancedChatSidebar className="w-full" onNavigate={() => setIsSidebarOpen(false)} />
+              <AdvancedChatSidebar className="w-full" publicSettings={publicSettings} onNavigate={() => setIsSidebarOpen(false)} />
             </div>
           </div>
         )}
@@ -143,6 +144,7 @@ export default function AdvancedChat() {
                     <Route path="skills" element={<Skills />} />
                     <Route path="mcp" element={<AdvancedChatMCP />} />
                     <Route path="devices" element={<AdvancedChatDevices />} />
+                    {publicSettings.message_channel_enabled && <Route path="channels" element={<MessageChannels />} />}
                     <Route path="images" element={<Images />} />
                     <Route path="videos" element={<Videos />} />
                     <Route path="files" element={<AdvancedChatFiles />} />
@@ -165,15 +167,17 @@ export default function AdvancedChat() {
   )
 }
 
-function AdvancedChatSidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+function AdvancedChatSidebar({ className, publicSettings, onNavigate }: { className?: string; publicSettings: PublicSettings; onNavigate?: () => void }) {
   const location = useLocation()
   const { language, t } = useI18n()
   const filesLabel = language === "zh" ? "文件库" : "Files"
+  const messageChannelsLabel = language === "zh" ? "消息通道" : "Message Channels"
   const items = [
     { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" || location.pathname.startsWith("/chat/session/") },
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
     { href: "/chat/videos", label: t("nav.videos"), icon: Video, active: location.pathname === "/chat/videos" },
     { href: "/chat/files", label: filesLabel, icon: FileText, active: location.pathname === "/chat/files" },
+    ...(publicSettings.message_channel_enabled ? [{ href: "/chat/channels", label: messageChannelsLabel, icon: MessageSquare, active: location.pathname === "/chat/channels" }] : []),
     { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
     { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },
     { href: "/chat/devices", label: t("nav.devices"), icon: Laptop, active: location.pathname === "/chat/devices" },

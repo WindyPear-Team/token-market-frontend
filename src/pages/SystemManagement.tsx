@@ -775,6 +775,11 @@ export default function SystemManagement({ section = "general", initialTab }: { 
       setIsPremiumNoticeOpen(true)
       return
     }
+    if (!isPremium && form.message_channel_enabled) {
+      updateField("message_channel_enabled", false)
+      setIsPremiumNoticeOpen(true)
+      return
+    }
     const streakRewards = validateCheckInStreakRewards(form.checkin_streak_rewards, copy)
     if (!streakRewards.valid) {
       error(streakRewards.error)
@@ -1235,6 +1240,17 @@ export default function SystemManagement({ section = "general", initialTab }: { 
               </select>
               <p className="text-xs leading-5 text-muted-foreground">{copy.chatPageModeHint}</p>
             </label>
+            <ToggleField
+              label={copy.messageChannelEnabled}
+              checked={form.message_channel_enabled}
+              onChange={(checked) => {
+                if (checked && !isPremium) {
+                  setIsPremiumNoticeOpen(true)
+                  return
+                }
+                updateField("message_channel_enabled", checked)
+              }}
+            />
           </div>
         </SettingsPanel>
       )}
@@ -3258,6 +3274,7 @@ const zhCopy = {
   chatPageModeBasic: "基础聊天（控制台内）",
   chatPageModeAdvanced: "高级聊天（独立页面）",
   chatPageModeHint: "高级聊天会打开独立 /chat 页面，需要高级版；非高级版会使用基础聊天。",
+  messageChannelEnabled: "启用消息通道（高级版）",
   sidebarImages: "侧边栏：AI 绘画",
   sidebarSettings: "侧边栏：设置",
   sidebarSystem: "侧边栏：系统管理",
@@ -3608,6 +3625,7 @@ const enCopy: SystemCopy = {
   chatPageModeBasic: "Basic chat (inside dashboard)",
   chatPageModeAdvanced: "Advanced chat (standalone page)",
   chatPageModeHint: "Advanced chat opens the standalone /chat page and requires premium edition. Non-premium editions use basic chat.",
+  messageChannelEnabled: "Enable Message Channels (Premium)",
   sidebarImages: "Sidebar: AI Images",
   sidebarSettings: "Sidebar: Settings",
   sidebarSystem: "Sidebar: System",
