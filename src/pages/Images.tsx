@@ -22,25 +22,47 @@ interface ImageResult {
 }
 
 type ImageResponseFormat = "auto" | "url" | "b64_json"
+type ImageMode = "generate" | "edit"
 
 const modelStoreKey = "windypear.images.model.v1"
 const sizeStoreKey = "windypear.images.size.v1"
 const responseFormatStoreKey = "windypear.images.response_format.v1"
 const countStoreKey = "windypear.images.count.v1"
+const modeStoreKey = "windypear.images.mode.v1"
+const qualityStoreKey = "windypear.images.quality.v1"
+const styleStoreKey = "windypear.images.style.v1"
+const backgroundStoreKey = "windypear.images.background.v1"
+const moderationStoreKey = "windypear.images.moderation.v1"
+const outputFormatStoreKey = "windypear.images.output_format.v1"
 
 const imageSizes = ["auto", "1024x1024", "1024x1536", "1536x1024", "1024x1792", "1792x1024"]
 const responseFormats: ImageResponseFormat[] = ["auto", "url", "b64_json"]
+const imageQualities = ["auto", "low", "medium", "high"]
+const imageStyles = ["auto", "vivid", "natural"]
+const imageBackgrounds = ["auto", "transparent", "opaque"]
+const imageModerations = ["auto", "low"]
+const imageOutputFormats = ["auto", "png", "jpeg", "webp"]
 
 export default function Images() {
   const { language } = useI18n()
   const copy = language === "zh" ? zhCopy : enCopy
   const { success, error, info } = useToast()
   const [apiKey, setAPIKey] = useState("")
+  const [mode, setMode] = useState<ImageMode>(() => normalizeMode(localStorage.getItem(modeStoreKey) || "generate"))
   const [modelName, setModelName] = useState(() => localStorage.getItem(modelStoreKey) || "")
   const [prompt, setPrompt] = useState("")
   const [size, setSize] = useState(() => localStorage.getItem(sizeStoreKey) || "auto")
   const [count, setCount] = useState(() => normalizeCount(localStorage.getItem(countStoreKey) || "1"))
   const [responseFormat, setResponseFormat] = useState<ImageResponseFormat>(() => normalizeResponseFormat(localStorage.getItem(responseFormatStoreKey) || "auto"))
+  const [quality, setQuality] = useState(() => localStorage.getItem(qualityStoreKey) || "auto")
+  const [style, setStyle] = useState(() => localStorage.getItem(styleStoreKey) || "auto")
+  const [background, setBackground] = useState(() => localStorage.getItem(backgroundStoreKey) || "auto")
+  const [moderation, setModeration] = useState(() => localStorage.getItem(moderationStoreKey) || "auto")
+  const [outputFormat, setOutputFormat] = useState(() => localStorage.getItem(outputFormatStoreKey) || "auto")
+  const [outputCompression, setOutputCompression] = useState(0)
+  const [extraParams, setExtraParams] = useState("")
+  const [editImage, setEditImage] = useState<File | null>(null)
+  const [editMask, setEditMask] = useState<File | null>(null)
   const [results, setResults] = useState<ImageResult[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -78,6 +100,197 @@ export default function Images() {
     localStorage.setItem(responseFormatStoreKey, responseFormat)
   }, [responseFormat])
 
+  useEffect(() => {
+    localStorage.setItem(modeStoreKey, mode)
+  }, [mode])
+/*
+
+const zhCopy = {
+  title: "AI 绘画",
+  config: "配置",
+  apiKey: "API Key",
+  keyPlaceholder: "填写 sk- 令牌",
+  mode: "模式",
+  modeGenerate: "图片生成",
+  modeEdit: "图片编辑",
+  model: "模型",
+  selectModel: "选择模型",
+  size: "尺寸",
+  count: "数量",
+  responseFormat: "响应格式",
+  quality: "质量",
+  style: "风格",
+  background: "背景",
+  moderation: "审核强度",
+  outputFormat: "输出格式",
+  outputCompression: "输出压缩",
+  extraParams: "额外参数 JSON",
+  editImage: "编辑图片",
+  editMask: "蒙版",
+  auto: "自动",
+  prompt: "提示词",
+  promptPlaceholder: "输入绘画或编辑提示词",
+  generate: "生成",
+  generating: "生成中",
+  results: "结果",
+  noResults: "暂无图片",
+  download: "下载",
+  keyRequired: "请填写令牌",
+  modelRequired: "请选择模型",
+  promptRequired: "请输入提示词",
+  imageRequired: "请上传要编辑的图片",
+  generateFailed: "生成失败",
+  generated: "已生成 {count} 张图片",
+  emptyResponse: "空响应",
+  extraParamsInvalid: "额外参数必须是 JSON 对象",
+  resultAlt: "生成图片 {index}",
+}
+
+const enCopy: typeof zhCopy = {
+  title: "AI Images",
+  config: "Config",
+  apiKey: "API Key",
+  keyPlaceholder: "Enter sk- token",
+  mode: "Mode",
+  modeGenerate: "Generate",
+  modeEdit: "Edit",
+  model: "Model",
+  selectModel: "Select model",
+  size: "Size",
+  count: "Count",
+  responseFormat: "Response format",
+  quality: "Quality",
+  style: "Style",
+  background: "Background",
+  moderation: "Moderation",
+  outputFormat: "Output format",
+  outputCompression: "Output compression",
+  extraParams: "Extra params JSON",
+  editImage: "Image",
+  editMask: "Mask",
+  auto: "Auto",
+  prompt: "Prompt",
+  promptPlaceholder: "Enter an image prompt or edit instruction",
+  generate: "Generate",
+  generating: "Generating",
+  results: "Results",
+  noResults: "No images yet",
+  download: "Download",
+  keyRequired: "Enter a token first",
+  modelRequired: "Select a model",
+  promptRequired: "Enter a prompt",
+  imageRequired: "Upload an image to edit",
+  generateFailed: "Generation failed",
+  generated: "Generated {count} images",
+  emptyResponse: "Empty response",
+  extraParamsInvalid: "Extra params must be a JSON object",
+  resultAlt: "Generated image {index}",
+}
+/*
+
+const zhCopy = {
+  title: "AI 绘画",
+  config: "配置",
+  apiKey: "API Key",
+  keyPlaceholder: "填写 sk- 令牌",
+  mode: "模式",
+  modeGenerate: "图片生成",
+  modeEdit: "图片编辑",
+  model: "模型",
+  selectModel: "选择模型",
+  size: "尺寸",
+  count: "数量",
+  responseFormat: "响应格式",
+  quality: "质量",
+  style: "风格",
+  background: "背景",
+  moderation: "审核强度",
+  outputFormat: "输出格式",
+  outputCompression: "输出压缩",
+  extraParams: "额外参数 JSON",
+  editImage: "编辑图片",
+  editMask: "蒙版",
+  auto: "自动",
+  prompt: "提示词",
+  promptPlaceholder: "输入绘画或编辑提示词",
+  generate: "生成",
+  generating: "生成中",
+  results: "结果",
+  noResults: "暂无图片",
+  download: "下载",
+  keyRequired: "请填写令牌",
+  modelRequired: "请选择模型",
+  promptRequired: "请输入提示词",
+  imageRequired: "请上传要编辑的图片",
+  generateFailed: "生成失败",
+  generated: "已生成 {count} 张图片",
+  emptyResponse: "空响应",
+  extraParamsInvalid: "额外参数必须是 JSON 对象",
+  resultAlt: "生成图片 {index}",
+}
+
+const enCopy: typeof zhCopy = {
+  title: "AI Images",
+  config: "Config",
+  apiKey: "API Key",
+  keyPlaceholder: "Enter sk- token",
+  mode: "Mode",
+  modeGenerate: "Generate",
+  modeEdit: "Edit",
+  model: "Model",
+  selectModel: "Select model",
+  size: "Size",
+  count: "Count",
+  responseFormat: "Response format",
+  quality: "Quality",
+  style: "Style",
+  background: "Background",
+  moderation: "Moderation",
+  outputFormat: "Output format",
+  outputCompression: "Output compression",
+  extraParams: "Extra params JSON",
+  editImage: "Image",
+  editMask: "Mask",
+  auto: "Auto",
+  prompt: "Prompt",
+  promptPlaceholder: "Enter an image prompt or edit instruction",
+  generate: "Generate",
+  generating: "Generating",
+  results: "Results",
+  noResults: "No images yet",
+  download: "Download",
+  keyRequired: "Enter a token first",
+  modelRequired: "Select a model",
+  promptRequired: "Enter a prompt",
+  imageRequired: "Upload an image to edit",
+  generateFailed: "Generation failed",
+  generated: "Generated {count} images",
+  emptyResponse: "Empty response",
+  extraParamsInvalid: "Extra params must be a JSON object",
+  resultAlt: "Generated image {index}",
+}
+*/
+
+  useEffect(() => {
+    localStorage.setItem(qualityStoreKey, quality)
+  }, [quality])
+
+  useEffect(() => {
+    localStorage.setItem(styleStoreKey, style)
+  }, [style])
+
+  useEffect(() => {
+    localStorage.setItem(backgroundStoreKey, background)
+  }, [background])
+
+  useEffect(() => {
+    localStorage.setItem(moderationStoreKey, moderation)
+  }, [moderation])
+
+  useEffect(() => {
+    localStorage.setItem(outputFormatStoreKey, outputFormat)
+  }, [outputFormat])
+
   const generateImages = async () => {
     const rawKey = apiKey.trim()
     const cleanPrompt = prompt.trim()
@@ -94,10 +307,14 @@ export default function Images() {
       error(copy.promptRequired)
       return
     }
+    if (mode === "edit" && !editImage) {
+      error(copy.imageRequired)
+      return
+    }
 
     setIsGenerating(true)
     try {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         model: cleanModel,
         prompt: cleanPrompt,
         n: count,
@@ -108,15 +325,40 @@ export default function Images() {
       if (responseFormat !== "auto") {
         body.response_format = responseFormat
       }
+      if (quality !== "auto") {
+        body.quality = quality
+      }
+      if (style !== "auto") {
+        body.style = style
+      }
+      if (background !== "auto") {
+        body.background = background
+      }
+      if (moderation !== "auto") {
+        body.moderation = moderation
+      }
+      if (outputFormat !== "auto") {
+        body.output_format = outputFormat
+      }
+      if (outputCompression > 0) {
+        body.output_compression = outputCompression
+      }
+      Object.assign(body, parseExtraParams(extraParams, copy.extraParamsInvalid))
 
-      const response = await fetch("/v1/images/generations", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${rawKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      })
+      const response = mode === "edit"
+        ? await fetch("/v1/images/edits", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${rawKey}` },
+            body: imageEditFormData(body, editImage, editMask),
+          })
+        : await fetch("/v1/images/generations", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${rawKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          })
       const text = await response.text()
       const payload = parseJSON(text)
       if (!response.ok) {
@@ -165,6 +407,13 @@ export default function Images() {
               />
             </label>
             <label className="block space-y-2 text-sm">
+              <span className="font-medium">{copy.mode}</span>
+              <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={mode} onChange={(event) => setMode(normalizeMode(event.target.value))}>
+                <option value="generate">{copy.modeGenerate}</option>
+                <option value="edit">{copy.modeEdit}</option>
+              </select>
+            </label>
+            <label className="block space-y-2 text-sm">
               <span className="font-medium">{copy.model}</span>
               <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={modelName} onChange={(event) => setModelName(event.target.value)}>
                 <option value="">{copy.selectModel}</option>
@@ -191,6 +440,18 @@ export default function Images() {
                 <Input min={1} max={4} type="number" value={count} onChange={(event) => setCount(normalizeCount(event.target.value))} />
               </label>
             </div>
+            {mode === "edit" && (
+              <div className="space-y-3 rounded-md border p-3">
+                <label className="block space-y-2 text-sm">
+                  <span className="font-medium">{copy.editImage}</span>
+                  <Input type="file" accept="image/*" onChange={(event) => setEditImage(event.target.files?.[0] || null)} />
+                </label>
+                <label className="block space-y-2 text-sm">
+                  <span className="font-medium">{copy.editMask}</span>
+                  <Input type="file" accept="image/*" onChange={(event) => setEditMask(event.target.files?.[0] || null)} />
+                </label>
+              </div>
+            )}
             <label className="block space-y-2 text-sm">
               <span className="font-medium">{copy.responseFormat}</span>
               <select
@@ -204,6 +465,21 @@ export default function Images() {
                   </option>
                 ))}
               </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <OptionField label={copy.quality} value={quality} options={imageQualities} autoLabel={copy.auto} onChange={setQuality} />
+              <OptionField label={copy.style} value={style} options={imageStyles} autoLabel={copy.auto} onChange={setStyle} />
+              <OptionField label={copy.background} value={background} options={imageBackgrounds} autoLabel={copy.auto} onChange={setBackground} />
+              <OptionField label={copy.moderation} value={moderation} options={imageModerations} autoLabel={copy.auto} onChange={setModeration} />
+              <OptionField label={copy.outputFormat} value={outputFormat} options={imageOutputFormats} autoLabel={copy.auto} onChange={setOutputFormat} />
+              <label className="block space-y-2 text-sm">
+                <span className="font-medium">{copy.outputCompression}</span>
+                <Input min={0} max={100} type="number" value={outputCompression} onChange={(event) => setOutputCompression(normalizePercent(event.target.value))} />
+              </label>
+            </div>
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium">{copy.extraParams}</span>
+              <textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring" value={extraParams} placeholder='{"seed":1234}' onChange={(event) => setExtraParams(event.target.value)} />
             </label>
           </CardContent>
         </Card>
@@ -289,6 +565,78 @@ function normalizeResponseFormat(value: string): ImageResponseFormat {
   return "auto"
 }
 
+function normalizeMode(value: string): ImageMode {
+  return value === "edit" ? "edit" : "generate"
+}
+
+function normalizePercent(value: string) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) {
+    return 0
+  }
+  return Math.min(100, Math.max(0, parsed))
+}
+
+function OptionField({
+  label,
+  value,
+  options,
+  autoLabel,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: readonly string[]
+  autoLabel: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block space-y-2 text-sm">
+      <span className="font-medium">{label}</span>
+      <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option === "auto" ? autoLabel : option}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function parseExtraParams(value: string, invalidMessage: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return {}
+  }
+  const parsed = parseJSON(trimmed)
+  if (!isRecord(parsed)) {
+    throw new Error(invalidMessage)
+  }
+  return parsed
+}
+
+function imageEditFormData(body: Record<string, unknown>, image: File | null, mask: File | null) {
+  const formData = new FormData()
+  if (image) {
+    formData.append("image", image)
+  }
+  if (mask) {
+    formData.append("mask", mask)
+  }
+  Object.entries(body).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return
+    }
+    if (typeof value === "object") {
+      formData.append(key, JSON.stringify(value))
+      return
+    }
+    formData.append(key, String(value))
+  })
+  return formData
+}
+
 function normalizeCatalogItem(value: unknown): UserChannelCatalog {
   const item = isRecord(value) ? value : {}
   return {
@@ -353,6 +701,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
+/*
 const zhCopy = {
   title: "AI 绘画",
   config: "配置",
@@ -404,5 +753,91 @@ const enCopy: typeof zhCopy = {
   generateFailed: "Generation failed",
   generated: "Generated {count} images",
   emptyResponse: "Empty response",
+  resultAlt: "Generated image {index}",
+}
+  useEffect(() => {
+    localStorage.setItem(modeStoreKey, mode)
+  }, [mode])
+*/
+
+const zhCopy = {
+  title: "AI 绘画",
+  config: "配置",
+  apiKey: "API Key",
+  keyPlaceholder: "填写 sk- 令牌",
+  mode: "模式",
+  modeGenerate: "图片生成",
+  modeEdit: "图片编辑",
+  model: "模型",
+  selectModel: "选择模型",
+  size: "尺寸",
+  count: "数量",
+  responseFormat: "响应格式",
+  quality: "质量",
+  style: "风格",
+  background: "背景",
+  moderation: "审核强度",
+  outputFormat: "输出格式",
+  outputCompression: "输出压缩",
+  extraParams: "额外参数 JSON",
+  editImage: "编辑图片",
+  editMask: "蒙版",
+  auto: "自动",
+  prompt: "提示词",
+  promptPlaceholder: "输入绘画或编辑提示词",
+  generate: "生成",
+  generating: "生成中",
+  results: "结果",
+  noResults: "暂无图片",
+  download: "下载",
+  keyRequired: "请填写令牌",
+  modelRequired: "请选择模型",
+  promptRequired: "请输入提示词",
+  imageRequired: "请上传要编辑的图片",
+  generateFailed: "生成失败",
+  generated: "已生成 {count} 张图片",
+  emptyResponse: "空响应",
+  extraParamsInvalid: "额外参数必须是 JSON 对象",
+  resultAlt: "生成图片 {index}",
+}
+
+const enCopy: typeof zhCopy = {
+  title: "AI Images",
+  config: "Config",
+  apiKey: "API Key",
+  keyPlaceholder: "Enter sk- token",
+  mode: "Mode",
+  modeGenerate: "Generate",
+  modeEdit: "Edit",
+  model: "Model",
+  selectModel: "Select model",
+  size: "Size",
+  count: "Count",
+  responseFormat: "Response format",
+  quality: "Quality",
+  style: "Style",
+  background: "Background",
+  moderation: "Moderation",
+  outputFormat: "Output format",
+  outputCompression: "Output compression",
+  extraParams: "Extra params JSON",
+  editImage: "Image",
+  editMask: "Mask",
+  auto: "Auto",
+  prompt: "Prompt",
+  promptPlaceholder: "Enter an image prompt or edit instruction",
+  generate: "Generate",
+  generating: "Generating",
+  results: "Results",
+  noResults: "No images yet",
+  download: "Download",
+  keyRequired: "Enter a token first",
+  modelRequired: "Select a model",
+  promptRequired: "Enter a prompt",
+  imageRequired: "Upload an image to edit",
+  generateFailed: "Generation failed",
+  generated: "Generated {count} images",
+  emptyResponse: "Empty response",
+  extraParamsInvalid: "Extra params must be a JSON object",
   resultAlt: "Generated image {index}",
 }

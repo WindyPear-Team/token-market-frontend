@@ -811,12 +811,12 @@ function UpstreamModelConfigDialog({
 
   return (
     <Dialog open={Boolean(channel)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-6xl overflow-hidden">
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle>{copy.modelConfigs}</DialogTitle>
           <DialogDescription>{channel?.name || ""}</DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 space-y-4 overflow-auto pr-1">
+        <div className="min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
           <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto_auto]">
             <FieldLabel label={copy.syncFormat}>
               <select
@@ -960,7 +960,7 @@ function ChannelModelDialog({
 
   return (
     <Dialog open={Boolean(model)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{model?.id ? copy.editChannelModel : copy.addChannelModel}</DialogTitle>
         </DialogHeader>

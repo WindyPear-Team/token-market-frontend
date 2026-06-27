@@ -126,8 +126,6 @@ export default function Models() {
   const [editingModel, setEditingModel] = useState<Partial<ModelConfig> | null>(null)
   const { success, error, info } = useToast()
   const [priceChannelID, setPriceChannelID] = useState(0)
-  const [syncFormat, setSyncFormat] = useState("auto")
-  const [customSyncPath, setCustomSyncPath] = useState("")
   const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null)
   const [selectedModelNames, setSelectedModelNames] = useState<string[]>([])
   const [browserFallback, setBrowserFallback] = useState<BrowserSyncFallback | null>(null)
@@ -188,8 +186,6 @@ export default function Models() {
       }
       const res = await api.post("/models/prices/sync/preview", {
         channel_id: priceChannelID,
-        format: syncFormat,
-        path: customSyncPath,
       })
       return res.data as SyncPreview
     },
@@ -253,7 +249,7 @@ export default function Models() {
     if (!channel) {
       return
     }
-    const nextFallback = browserFallbackForChannel(channel, syncFormat, customSyncPath, syncErrorMessage(sourceError, copy.syncPreviewFailed))
+    const nextFallback = browserFallbackForChannel(channel, syncErrorMessage(sourceError, copy.syncPreviewFailed))
     if (!nextFallback.url) {
       error(copy.missingBaseURL)
       return
@@ -316,7 +312,7 @@ export default function Models() {
           <CardTitle>{copy.priceSync}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <FieldLabel label={copy.sourceChannel}>
               <select
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
@@ -328,25 +324,6 @@ export default function Models() {
                   <option key={channel.id} value={channel.id}>{channel.name}</option>
                 ))}
               </select>
-            </FieldLabel>
-            <FieldLabel label={copy.syncFormat}>
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                value={syncFormat}
-                onChange={(event) => setSyncFormat(event.target.value)}
-              >
-                {priceSyncFormatOptionLabels(language).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </FieldLabel>
-            <FieldLabel label={copy.customSyncPath}>
-              <Input
-                value={customSyncPath}
-                onChange={(event) => setCustomSyncPath(event.target.value)}
-                placeholder="/api/pricing"
-                disabled={syncFormat !== "custom"}
-              />
             </FieldLabel>
             <Button className="gap-2 self-end" disabled={!priceChannelID || previewPriceSync.isPending || browserPreviewSync.isPending} onClick={() => previewPriceSync.mutate()}>
               <Download size={16} />
@@ -1115,8 +1092,8 @@ function tierConditionLabel(condition: string | undefined, copy: typeof zhCopy) 
   return tierConditionOptions(copy).find((item) => item.value === normalizeTierCondition(condition || ""))?.label || copy.tierConditionCurrent
 }
 
-function browserFallbackForChannel(channel: UpstreamChannel, format: string, customPath: string, error: string): BrowserSyncFallback {
-  const path = priceSyncPath(format, customPath)
+function browserFallbackForChannel(channel: UpstreamChannel, error: string): BrowserSyncFallback {
+  const path = "/api/pricing"
   const url = upstreamURLForPath(channel.base_url, path)
   return {
     channel,
@@ -1126,39 +1103,6 @@ function browserFallbackForChannel(channel: UpstreamChannel, format: string, cus
     includeToken: Boolean(channel.api_key) && shouldIncludeChannelToken(path),
     manualPayload: "",
   }
-}
-
-function priceSyncPath(format: string, customPath: string) {
-  switch (format) {
-    case "generic_models":
-    case "models":
-      return "/models"
-    case "api_models":
-    case "oneapi_models":
-      return "/api/models"
-    case "api_prices":
-    case "legacy_api_prices":
-      return "/api/prices"
-    case "custom":
-      return normalizeBrowserSyncPath(customPath)
-    case "auto":
-    case "newapi_prices":
-    case "newapi_pricing":
-    case "api_pricing":
-    default:
-      return "/api/pricing"
-  }
-}
-
-function normalizeBrowserSyncPath(path: string) {
-  const nextPath = path.trim()
-  if (!nextPath) {
-    return ""
-  }
-  if (nextPath.startsWith("http://") || nextPath.startsWith("https://")) {
-    return nextPath
-  }
-  return nextPath.startsWith("/") ? nextPath : `/${nextPath}`
 }
 
 function upstreamURLForPath(baseURL: string, path: string) {
@@ -1230,27 +1174,6 @@ function providerName(provider: string) {
     return "-"
   }
   return providerPresets.find((item) => item.id === provider)?.name || provider
-}
-
-function priceSyncFormatOptionLabels(language: string) {
-  if (language === "zh") {
-    return [
-      { value: "auto", label: "自动识别" },
-      { value: "newapi_prices", label: "New API /api/pricing" },
-      { value: "api_prices", label: "通用 /api/prices" },
-      { value: "generic_models", label: "通用 /models" },
-      { value: "api_models", label: "通用 /api/models" },
-      { value: "custom", label: "自定义路径" },
-    ]
-  }
-  return [
-    { value: "auto", label: "Auto detect" },
-    { value: "newapi_prices", label: "New API /api/pricing" },
-    { value: "api_prices", label: "Generic /api/prices" },
-    { value: "generic_models", label: "Generic /models" },
-    { value: "api_models", label: "Generic /api/models" },
-    { value: "custom", label: "Custom path" },
-  ]
 }
 
 const providerPresets = [
@@ -1328,8 +1251,6 @@ const zhCopy = {
   priceSync: "价格拉取",
   sourceChannel: "来源上级渠道",
   selectChannel: "选择上级渠道",
-  syncFormat: "价格格式",
-  customSyncPath: "自定义路径",
   fetchPrices: "拉取价格",
   channelRequired: "请选择上级渠道",
   syncPreviewFailed: "获取价格失败",
@@ -1402,8 +1323,6 @@ const enCopy: typeof zhCopy = {
   priceSync: "Price fetch",
   sourceChannel: "Source upstream channel",
   selectChannel: "Select upstream channel",
-  syncFormat: "Price format",
-  customSyncPath: "Custom path",
   fetchPrices: "Fetch prices",
   channelRequired: "Select an upstream channel",
   syncPreviewFailed: "Failed to fetch prices",

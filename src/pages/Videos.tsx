@@ -26,8 +26,14 @@ const modelStoreKey = "windypear.videos.model.v1"
 const sizeStoreKey = "windypear.videos.size.v1"
 const countStoreKey = "windypear.videos.count.v1"
 const durationStoreKey = "windypear.videos.duration.v1"
+const qualityStoreKey = "windypear.videos.quality.v1"
+const responseFormatStoreKey = "windypear.videos.response_format.v1"
+const aspectRatioStoreKey = "windypear.videos.aspect_ratio.v1"
 
 const videoSizes = ["auto", "480p", "720p", "1080p", "1024x576", "576x1024", "1280x720", "720x1280", "1920x1080", "1080x1920"]
+const videoQualities = ["auto", "low", "medium", "high", "standard", "hd"]
+const videoResponseFormats = ["auto", "url", "b64_json"]
+const videoAspectRatios = ["auto", "16:9", "9:16", "1:1", "4:3", "3:4"]
 
 export default function Videos() {
   const { language } = useI18n()
@@ -39,6 +45,13 @@ export default function Videos() {
   const [size, setSize] = useState(() => localStorage.getItem(sizeStoreKey) || "auto")
   const [count, setCount] = useState(() => normalizeCount(localStorage.getItem(countStoreKey) || "1"))
   const [duration, setDuration] = useState(() => normalizeDuration(localStorage.getItem(durationStoreKey) || "5"))
+  const [quality, setQuality] = useState(() => localStorage.getItem(qualityStoreKey) || "auto")
+  const [responseFormat, setResponseFormat] = useState(() => localStorage.getItem(responseFormatStoreKey) || "auto")
+  const [aspectRatio, setAspectRatio] = useState(() => localStorage.getItem(aspectRatioStoreKey) || "auto")
+  const [fps, setFPS] = useState(0)
+  const [seed, setSeed] = useState("")
+  const [watermark, setWatermark] = useState(false)
+  const [extraParams, setExtraParams] = useState("")
   const [results, setResults] = useState<VideoResult[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -76,6 +89,18 @@ export default function Videos() {
     localStorage.setItem(durationStoreKey, String(duration))
   }, [duration])
 
+  useEffect(() => {
+    localStorage.setItem(qualityStoreKey, quality)
+  }, [quality])
+
+  useEffect(() => {
+    localStorage.setItem(responseFormatStoreKey, responseFormat)
+  }, [responseFormat])
+
+  useEffect(() => {
+    localStorage.setItem(aspectRatioStoreKey, aspectRatio)
+  }, [aspectRatio])
+
   const generateVideos = async () => {
     const rawKey = apiKey.trim()
     const cleanPrompt = prompt.trim()
@@ -95,7 +120,7 @@ export default function Videos() {
 
     setIsGenerating(true)
     try {
-      const body: Record<string, string | number> = {
+      const body: Record<string, unknown> = {
         model: cleanModel,
         prompt: cleanPrompt,
         n: count,
@@ -104,6 +129,26 @@ export default function Videos() {
       if (size !== "auto") {
         body.size = size
       }
+      if (quality !== "auto") {
+        body.quality = quality
+      }
+      if (responseFormat !== "auto") {
+        body.response_format = responseFormat
+      }
+      if (aspectRatio !== "auto") {
+        body.aspect_ratio = aspectRatio
+      }
+      if (fps > 0) {
+        body.fps = fps
+      }
+      const parsedSeed = parseOptionalInt(seed)
+      if (parsedSeed !== null) {
+        body.seed = parsedSeed
+      }
+      if (watermark) {
+        body.watermark = true
+      }
+      Object.assign(body, parseExtraParams(extraParams, copy.extraParamsInvalid))
 
       const response = await fetch("/v1/videos/generations", {
         method: "POST",
@@ -164,16 +209,7 @@ export default function Videos() {
                 ))}
               </select>
             </label>
-            <label className="block space-y-2 text-sm">
-              <span className="font-medium">{copy.size}</span>
-              <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={size} onChange={(event) => setSize(event.target.value)}>
-                {videoSizes.map((option) => (
-                  <option key={option} value={option}>
-                    {option === "auto" ? copy.auto : option}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <OptionField label={copy.size} value={size} options={videoSizes} autoLabel={copy.auto} onChange={setSize} />
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block space-y-2 text-sm">
                 <span className="font-medium">{copy.count}</span>
@@ -184,6 +220,27 @@ export default function Videos() {
                 <Input min={1} max={60} type="number" value={duration} onChange={(event) => setDuration(normalizeDuration(event.target.value))} />
               </label>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <OptionField label={copy.quality} value={quality} options={videoQualities} autoLabel={copy.auto} onChange={setQuality} />
+              <OptionField label={copy.responseFormat} value={responseFormat} options={videoResponseFormats} autoLabel={copy.auto} onChange={setResponseFormat} />
+              <OptionField label={copy.aspectRatio} value={aspectRatio} options={videoAspectRatios} autoLabel={copy.auto} onChange={setAspectRatio} />
+              <label className="block space-y-2 text-sm">
+                <span className="font-medium">{copy.fps}</span>
+                <Input min={0} max={120} type="number" value={fps} onChange={(event) => setFPS(normalizeFPS(event.target.value))} />
+              </label>
+              <label className="block space-y-2 text-sm">
+                <span className="font-medium">{copy.seed}</span>
+                <Input value={seed} placeholder="1234" onChange={(event) => setSeed(event.target.value)} />
+              </label>
+              <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                <input type="checkbox" checked={watermark} onChange={(event) => setWatermark(event.target.checked)} />
+                {copy.watermark}
+              </label>
+            </div>
+            <label className="block space-y-2 text-sm">
+              <span className="font-medium">{copy.extraParams}</span>
+              <textarea className="min-h-24 w-full rounded-md border bg-background px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring" value={extraParams} placeholder='{"camera_fixed":true}' onChange={(event) => setExtraParams(event.target.value)} />
+            </label>
           </CardContent>
         </Card>
 
@@ -264,6 +321,62 @@ function normalizeDuration(value: string) {
     return 5
   }
   return Math.min(60, Math.max(1, duration))
+}
+
+function normalizeFPS(value: string) {
+  const fps = Number.parseInt(value, 10)
+  if (!Number.isFinite(fps)) {
+    return 0
+  }
+  return Math.min(120, Math.max(0, fps))
+}
+
+function parseOptionalInt(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+  const parsed = Number.parseInt(trimmed, 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function OptionField({
+  label,
+  value,
+  options,
+  autoLabel,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: readonly string[]
+  autoLabel: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block space-y-2 text-sm">
+      <span className="font-medium">{label}</span>
+      <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option === "auto" ? autoLabel : option}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function parseExtraParams(value: string, invalidMessage: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return {}
+  }
+  const parsed = parseJSON(trimmed)
+  if (!isRecord(parsed)) {
+    throw new Error(invalidMessage)
+  }
+  return parsed
 }
 
 function normalizeCatalogItem(value: unknown): UserChannelCatalog {
@@ -347,6 +460,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
+/*
 const zhCopy = {
   title: "AI 视频",
   config: "配置",
@@ -401,4 +515,77 @@ const enCopy: typeof zhCopy = {
   generateFailed: "Generation failed",
   generated: "Generated {count} videos",
   emptyResponse: "Empty response",
+}
+*/
+
+const zhCopy = {
+  title: "AI 视频",
+  config: "配置",
+  apiKey: "API Key",
+  keyPlaceholder: "填写 sk- 令牌",
+  model: "模型",
+  selectModel: "选择模型",
+  size: "尺寸",
+  count: "数量",
+  duration: "时长（秒）",
+  quality: "质量",
+  responseFormat: "响应格式",
+  aspectRatio: "宽高比",
+  fps: "FPS",
+  seed: "种子",
+  watermark: "添加水印",
+  extraParams: "额外参数 JSON",
+  auto: "自动",
+  prompt: "提示词",
+  promptPlaceholder: "输入视频生成提示词",
+  generate: "生成",
+  generating: "生成中",
+  results: "结果",
+  noResults: "暂无视频",
+  noVideoURL: "响应中没有视频地址",
+  status: "状态",
+  download: "下载",
+  keyRequired: "请填写令牌",
+  modelRequired: "请选择模型",
+  promptRequired: "请输入提示词",
+  generateFailed: "生成失败",
+  generated: "已生成 {count} 个视频",
+  emptyResponse: "空响应",
+  extraParamsInvalid: "额外参数必须是 JSON 对象",
+}
+
+const enCopy: typeof zhCopy = {
+  title: "AI Videos",
+  config: "Config",
+  apiKey: "API Key",
+  keyPlaceholder: "Enter sk- token",
+  model: "Model",
+  selectModel: "Select model",
+  size: "Size",
+  count: "Count",
+  duration: "Duration (s)",
+  quality: "Quality",
+  responseFormat: "Response format",
+  aspectRatio: "Aspect ratio",
+  fps: "FPS",
+  seed: "Seed",
+  watermark: "Add watermark",
+  extraParams: "Extra params JSON",
+  auto: "Auto",
+  prompt: "Prompt",
+  promptPlaceholder: "Enter a video prompt",
+  generate: "Generate",
+  generating: "Generating",
+  results: "Results",
+  noResults: "No videos yet",
+  noVideoURL: "No video URL in response",
+  status: "Status",
+  download: "Download",
+  keyRequired: "Enter a token first",
+  modelRequired: "Select a model",
+  promptRequired: "Enter a prompt",
+  generateFailed: "Generation failed",
+  generated: "Generated {count} videos",
+  emptyResponse: "Empty response",
+  extraParamsInvalid: "Extra params must be a JSON object",
 }
