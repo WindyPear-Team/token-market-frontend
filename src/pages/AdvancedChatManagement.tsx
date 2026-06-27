@@ -39,6 +39,7 @@ interface AdvancedChatSettings {
   assistant_connector_write_file_enabled: boolean
   assistant_connector_replace_text_enabled: boolean
   assistant_connector_run_command_enabled: boolean
+  assistant_connector_web_search_enabled: boolean
 }
 
 const defaultAdvancedChatSettings: AdvancedChatSettings = {
@@ -52,6 +53,7 @@ const defaultAdvancedChatSettings: AdvancedChatSettings = {
   assistant_connector_write_file_enabled: true,
   assistant_connector_replace_text_enabled: true,
   assistant_connector_run_command_enabled: true,
+  assistant_connector_web_search_enabled: true,
 }
 
 const emptyDraft: MCPDraft = {
@@ -140,6 +142,7 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
         assistant_connector_write_file_enabled: form.assistant_connector_write_file_enabled,
         assistant_connector_replace_text_enabled: form.assistant_connector_replace_text_enabled,
         assistant_connector_run_command_enabled: form.assistant_connector_run_command_enabled,
+        assistant_connector_web_search_enabled: form.assistant_connector_web_search_enabled,
       })
       return normalizeAdvancedChatSettings(res.data)
     },
@@ -332,6 +335,12 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
                       checked={form.assistant_connector_run_command_enabled}
                       onChange={(checked) => setForm((current) => ({ ...current, assistant_connector_run_command_enabled: checked }))}
                     />
+                    <ToggleRow
+                      title="Web Search"
+                      description="Allow assistant connector web search requests. Search tasks are read-only and do not require approval."
+                      checked={form.assistant_connector_web_search_enabled}
+                      onChange={(checked) => setForm((current) => ({ ...current, assistant_connector_web_search_enabled: checked }))}
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -478,6 +487,7 @@ function normalizeAdvancedChatSettings(value: unknown): AdvancedChatSettings {
     assistant_connector_write_file_enabled: item.assistant_connector_write_file_enabled !== false,
     assistant_connector_replace_text_enabled: item.assistant_connector_replace_text_enabled !== false,
     assistant_connector_run_command_enabled: item.assistant_connector_run_command_enabled !== false,
+    assistant_connector_web_search_enabled: item.assistant_connector_web_search_enabled !== false,
   }
 }
 

@@ -141,6 +141,15 @@ interface ConnectorApprovalTask {
   created_at: string
 }
 
+interface WorkspaceSkill {
+  id: string
+  name: string
+  path: string
+  content: string
+  size: number
+  truncated: boolean
+}
+
 interface AdvancedChatSettings {
   attachment_max_mb: number
   attachment_allowed_types: string[]
@@ -154,6 +163,7 @@ interface AdvancedChatSettings {
   assistant_connector_write_file_enabled: boolean
   assistant_connector_replace_text_enabled: boolean
   assistant_connector_run_command_enabled: boolean
+  assistant_connector_web_search_enabled: boolean
 }
 
 interface ChatAttachment {
@@ -212,6 +222,7 @@ const defaultAdvancedChatSettings: AdvancedChatSettings = {
   assistant_connector_write_file_enabled: true,
   assistant_connector_replace_text_enabled: true,
   assistant_connector_run_command_enabled: true,
+  assistant_connector_web_search_enabled: true,
 }
 
 const chatStoreKeys: Record<ChatMode, ChatStoreKeys> = {
@@ -267,6 +278,8 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const [pendingConnectorWorkspace, setPendingConnectorWorkspace] = useState("")
   const [pendingConnectorAutoApprove, setPendingConnectorAutoApprove] = useState(false)
   const [pendingConnectorCommandPrefixes, setPendingConnectorCommandPrefixes] = useState("")
+  const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
+  const [isRefreshingWorkspaceSkills, setIsRefreshingWorkspaceSkills] = useState(false)
   const [decidingConnectorTaskID, setDecidingConnectorTaskID] = useState("")
   const [prompt, setPrompt] = useState("")
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
@@ -383,7 +396,8 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     currentAdvancedSettings.assistant_connector_read_file_enabled ||
     currentAdvancedSettings.assistant_connector_write_file_enabled ||
     currentAdvancedSettings.assistant_connector_replace_text_enabled ||
-    currentAdvancedSettings.assistant_connector_run_command_enabled
+    currentAdvancedSettings.assistant_connector_run_command_enabled ||
+    currentAdvancedSettings.assistant_connector_web_search_enabled
   const selectedAgent = useMemo(() => {
     if (!isAdvanced) {
       return undefined
@@ -896,6 +910,30 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       connector_auto_approve: false,
       connector_command_prefixes: [],
     }), { persist: true })
+    setWorkspaceSkills([])
+  }
+
+  const refreshWorkspaceSkills = async () => {
+    const deviceID = currentSession?.connector_device_id || pendingConnectorDeviceID
+    const workspacePath = currentSession?.connector_workspace_path || pendingConnectorWorkspace.trim()
+    if (!deviceID || !workspacePath) {
+      error(copy.noDeviceSelected)
+      return
+    }
+    setIsRefreshingWorkspaceSkills(true)
+    try {
+      const res = await api.post("/user/advanced-chat/workspace-skills/refresh", {
+        connector_device_id: deviceID,
+        connector_workspace_path: workspacePath,
+      })
+      const rawSkills: unknown[] = Array.isArray(res.data?.skills) ? res.data.skills : []
+      const skills = rawSkills.map(normalizeWorkspaceSkill).filter((skill): skill is WorkspaceSkill => Boolean(skill))
+      setWorkspaceSkills(skills)
+    } catch (err) {
+      error(apiErrorMessage(err, copy.workspaceSkillsRefreshFailed))
+    } finally {
+      setIsRefreshingWorkspaceSkills(false)
+    }
   }
 
   const decideConnectorApproval = async (taskID: string, approved: boolean) => {
@@ -2020,6 +2058,40 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                     <div className="rounded-md border border-dashed px-3 py-5 text-center text-sm text-muted-foreground">{copy.noDeviceSelected}</div>
                   )}
 
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Sparkles size={15} />
+                        {copy.workspaceSkills}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={isRefreshingWorkspaceSkills || !(currentSession?.connector_device_id || pendingConnectorDeviceID) || !(currentSession?.connector_workspace_path || pendingConnectorWorkspace.trim())}
+                        onClick={refreshWorkspaceSkills}
+                      >
+                        <Sparkles size={15} />
+                        {isRefreshingWorkspaceSkills ? copy.refreshingWorkspaceSkills : copy.refreshWorkspaceSkills}
+                      </Button>
+                    </div>
+                    {workspaceSkills.length === 0 ? (
+                      <div className="rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">{copy.noWorkspaceSkills}</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {workspaceSkills.map((skill) => (
+                          <div key={skill.path} className="rounded-md border p-3">
+                            <div className="flex min-w-0 items-center gap-2 text-sm">
+                              <span className="truncate font-medium">{skill.name}</span>
+                              {skill.truncated && <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{copy.truncated}</span>}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">{skill.path}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
                     <label className="space-y-1 text-sm">
                       <span className="font-medium">{copy.selectDevice}</span>
@@ -2229,9 +2301,10 @@ function ToolCallDetails({
   const path = stringArgument(toolCall.arguments, "path")
   const content = stringArgument(toolCall.arguments, "content")
   const command = stringArgument(toolCall.arguments, "command")
+  const query = stringArgument(toolCall.arguments, "query")
   const replacements = replacementEntriesFromArguments(toolCall.arguments)
   const title = builtinKind
-    ? builtinToolTitle(builtinKind, path, command, copy, booleanArgument(toolCall.arguments, "preview_old_content_available"))
+    ? builtinToolTitle(builtinKind, path, builtinKind === "search" ? query : command, copy, booleanArgument(toolCall.arguments, "preview_old_content_available"))
     : toolLabel(toolCall)
 
   useEffect(() => {
@@ -2287,7 +2360,7 @@ function ToolCallDetails({
         </div>
       ) : builtinKind === "replace" ? (
         <ReplacementDiffList entries={replacements} copy={copy} />
-      ) : builtinKind === "command" ? (
+      ) : builtinKind === "command" || builtinKind === "search" ? (
         <ToolResultBlock result={toolCall.result} copy={copy} />
       ) : (
         <>
@@ -2951,6 +3024,7 @@ function normalizeAdvancedChatSettings(value: unknown): AdvancedChatSettings {
     assistant_connector_write_file_enabled: item.assistant_connector_write_file_enabled !== false,
     assistant_connector_replace_text_enabled: item.assistant_connector_replace_text_enabled !== false,
     assistant_connector_run_command_enabled: item.assistant_connector_run_command_enabled !== false,
+    assistant_connector_web_search_enabled: item.assistant_connector_web_search_enabled !== false,
   }
 }
 
@@ -3005,6 +3079,24 @@ function normalizeConnectorApprovalTask(value: unknown): ConnectorApprovalTask |
     workspace_path: stringFromUnknown(value.workspace_path) || "",
     payload,
     created_at: stringFromUnknown(value.created_at) || new Date().toISOString(),
+  }
+}
+
+function normalizeWorkspaceSkill(value: unknown): WorkspaceSkill | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const path = stringFromUnknown(value.path)
+  if (!path) {
+    return null
+  }
+  return {
+    id: stringFromUnknown(value.id) || path,
+    name: stringFromUnknown(value.name) || path,
+    path,
+    content: stringFromUnknown(value.content) || "",
+    size: Number(value.size || 0),
+    truncated: value.truncated === true,
   }
 }
 
@@ -3635,12 +3727,14 @@ function connectorActionForToolCall(toolCall: ChatToolCall) {
       return "replace_text"
     case "command":
       return "run_command"
+    case "search":
+      return "web_search"
     default:
       return ""
   }
 }
 
-function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "replace" | "command" | "" {
+function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "replace" | "command" | "search" | "" {
   const name = toolCall.name.toLowerCase()
   if (!name.startsWith("workspace_")) {
     return ""
@@ -3660,26 +3754,31 @@ function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "r
   if (name.includes("workspace_run_command")) {
     return "command"
   }
+  if (name.includes("workspace_web_search")) {
+    return "search"
+  }
   return ""
 }
 
 function builtinToolTitle(
-  kind: "list" | "read" | "write" | "replace" | "command",
+  kind: "list" | "read" | "write" | "replace" | "command" | "search",
   path: string,
   command: string,
   copy: ChatCopy,
   writeModifiesExisting: boolean
 ) {
-  const target = kind === "command" ? command || "." : path || "."
+  const target = kind === "command" ? command || "." : kind === "search" ? path || command || "." : path || "."
   const template = kind === "list"
     ? copy.toolActionListFiles
     : kind === "read"
       ? copy.toolActionReadFile
       : kind === "command"
         ? copy.toolActionRunCommand
-        : kind === "write"
-          ? writeModifiesExisting ? copy.toolActionEditFile : copy.toolActionWriteFile
-          : copy.toolActionEditFile
+        : kind === "search"
+          ? copy.toolActionWebSearch
+          : kind === "write"
+            ? writeModifiesExisting ? copy.toolActionEditFile : copy.toolActionWriteFile
+            : copy.toolActionEditFile
   return template.replace("{target}", target)
 }
 
@@ -3828,6 +3927,12 @@ const chatCopyKeys = {
   selectWorkspace: "chat.selectWorkspace",
   workspacePath: "chat.workspacePath",
   workspacePathPlaceholder: "chat.workspacePathPlaceholder",
+  workspaceSkills: "chat.workspaceSkills",
+  refreshWorkspaceSkills: "chat.refreshWorkspaceSkills",
+  refreshingWorkspaceSkills: "chat.refreshingWorkspaceSkills",
+  noWorkspaceSkills: "chat.noWorkspaceSkills",
+  workspaceSkillsRefreshFailed: "chat.workspaceSkillsRefreshFailed",
+  truncated: "chat.truncated",
   noWorkspaces: "chat.noWorkspaces",
   setDevice: "chat.setDevice",
   deviceOnline: "chat.deviceOnline",
@@ -3893,6 +3998,7 @@ const chatCopyKeys = {
   toolActionListFiles: "chat.toolActionListFiles",
   toolActionReadFile: "chat.toolActionReadFile",
   toolActionRunCommand: "chat.toolActionRunCommand",
+  toolActionWebSearch: "chat.toolActionWebSearch",
   toolActionWriteFile: "chat.toolActionWriteFile",
   toolActionEditFile: "chat.toolActionEditFile",
   jumpToLatest: "chat.jumpToLatest",
