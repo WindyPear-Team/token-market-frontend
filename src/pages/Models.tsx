@@ -37,6 +37,7 @@ interface ModelConfig {
   model_name: string
   provider: string
   provider_icon_url: string
+  quota_type: number
   input_price: string | number
   output_price: string | number
   cached_input_price: string | number
@@ -77,6 +78,7 @@ interface SyncResult {
 
 interface SyncPreviewItem {
   model_name: string
+  quota_type?: number
   input_price: string | number
   output_price: string | number
   cached_input_price: string | number
@@ -369,6 +371,7 @@ export default function Models() {
               <TableRow>
                 <TableHead>{t("common.model")}</TableHead>
                 <TableHead>{copy.provider}</TableHead>
+                <TableHead>{copy.quotaType}</TableHead>
                 <TableHead>{t("admin.inputPrice")}</TableHead>
                 <TableHead>{t("admin.outputPrice")}</TableHead>
                 <TableHead>{copy.cachedInputPrice}</TableHead>
@@ -378,9 +381,9 @@ export default function Models() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <EmptyRow colSpan={7} text={t("common.loading")} />
+                <EmptyRow colSpan={8} text={t("common.loading")} />
               ) : models.length === 0 ? (
-                <EmptyRow colSpan={7} text={t("admin.noModels")} />
+                <EmptyRow colSpan={8} text={t("admin.noModels")} />
               ) : (
                 models.map((item) => (
                   <TableRow key={item.id}>
@@ -388,6 +391,7 @@ export default function Models() {
                     <TableCell>
                       <ProviderLabel provider={item.provider} iconURL={item.provider_icon_url} />
                     </TableCell>
+                    <TableCell>{quotaTypeLabel(item.quota_type, copy)}</TableCell>
                     <TableCell>
                       <PriceWithTiers value={item.input_price} tiers={item.input_price_tiers} />
                     </TableCell>
@@ -518,6 +522,16 @@ function ModelDialog({
               placeholder="https://cdn.example.com/provider.svg"
             />
           </FieldLabel>
+          <FieldLabel label={copy.quotaType}>
+            <select
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              value={String(draft.quota_type ?? 0)}
+              onChange={(event) => setDraft({ ...draft, quota_type: Number(event.target.value) || 0 })}
+            >
+              <option value="0">{copy.quotaToken}</option>
+              <option value="1">{copy.quotaPerCall}</option>
+            </select>
+          </FieldLabel>
           <PriceSection title={copy.textTokenPricing}>
             <PriceEditor
               label={t("admin.inputPrice")}
@@ -528,7 +542,7 @@ function ModelDialog({
               onTiersChange={(tiers) => setDraft({ ...draft, input_price_tiers: tiers })}
             />
             <PriceEditor
-              label={t("admin.outputPrice")}
+              label={(draft.quota_type ?? 0) === 1 ? copy.perCallPrice : t("admin.outputPrice")}
               price={draft.output_price}
               tiers={draft.output_price_tiers || []}
               tierLabel={copy.outputPriceTiers}
@@ -665,6 +679,7 @@ function PriceSyncPreviewDialog({
                     <TableHead className="w-10"></TableHead>
                     <TableHead>{t("common.model")}</TableHead>
                     <TableHead>{copy.provider}</TableHead>
+                    <TableHead>{copy.quotaType}</TableHead>
                     <TableHead>{t("admin.inputPrice")}</TableHead>
                     <TableHead>{t("admin.outputPrice")}</TableHead>
                     <TableHead>{copy.cachedInputPrice}</TableHead>
@@ -673,7 +688,7 @@ function PriceSyncPreviewDialog({
                 </TableHeader>
                 <TableBody>
                   {models.length === 0 ? (
-                    <EmptyRow colSpan={7} text={copy.noSyncModels} />
+                    <EmptyRow colSpan={8} text={copy.noSyncModels} />
                   ) : (
                     models.map((item) => (
                       <TableRow key={item.model_name}>
@@ -688,6 +703,7 @@ function PriceSyncPreviewDialog({
                         <TableCell>
                           <ProviderLabel provider={item.provider} iconURL={item.provider_icon_url} />
                         </TableCell>
+                        <TableCell>{quotaTypeLabel(item.quota_type || 0, copy)}</TableCell>
                         <TableCell>
                           <PriceWithTiers value={item.input_price} tiers={item.input_price_tiers} />
                         </TableCell>
@@ -968,6 +984,7 @@ function emptyModel(): Partial<ModelConfig> {
     model_name: "",
     provider: "",
     provider_icon_url: "",
+    quota_type: 0,
     input_price: 0,
     output_price: 0,
     cached_input_price: 0,
@@ -995,6 +1012,7 @@ function modelPayload(model: Partial<ModelConfig>) {
     model_name: model.model_name || "",
     provider: model.provider || "",
     provider_icon_url: model.provider_icon_url || "",
+    quota_type: Number(model.quota_type || 0) === 1 ? 1 : 0,
     input_price: Number(model.input_price || 0),
     output_price: Number(model.output_price || 0),
     cached_input_price: Number(model.cached_input_price || 0),
@@ -1023,6 +1041,10 @@ function formatModelPrice(value: string | number) {
     return "-"
   }
   return `$${parsed.toFixed(6)} / 1M`
+}
+
+function quotaTypeLabel(value: number | undefined, copy: typeof zhCopy) {
+  return Number(value || 0) === 1 ? copy.quotaPerCall : copy.quotaToken
 }
 
 function formatTokenCount(value: number) {
@@ -1266,6 +1288,10 @@ const zhCopy = {
   subtitle: "配置全局模型和基础价格",
   provider: "供应商",
   cachedInputPrice: "缓存读取价格",
+  quotaType: "计费类型",
+  quotaToken: "按量计费",
+  quotaPerCall: "按次计费",
+  perCallPrice: "每次价格",
   textTokenPricing: "文本 token 价格",
   cachePricing: "缓存价格",
   multimodalPricing: "多模态价格",
@@ -1336,6 +1362,10 @@ const enCopy: typeof zhCopy = {
   subtitle: "Configure global models and base prices",
   provider: "Provider",
   cachedInputPrice: "Cache read price",
+  quotaType: "Quota type",
+  quotaToken: "Usage-based",
+  quotaPerCall: "Per call",
+  perCallPrice: "Price per call",
   textTokenPricing: "Text token pricing",
   cachePricing: "Cache pricing",
   multimodalPricing: "Multimodal pricing",

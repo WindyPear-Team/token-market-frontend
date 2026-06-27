@@ -183,6 +183,10 @@ export function imagePathForSettings(settings?: Partial<PublicSettings>) {
   return isAdvancedChatEnabled(settings) ? "/chat/images" : "/dashboard/images"
 }
 
+export function videoPathForSettings(settings?: Partial<PublicSettings>) {
+  return isAdvancedChatEnabled(settings) ? "/chat/videos" : "/dashboard/videos"
+}
+
 export interface TopNavItem {
   label: string
   href: string

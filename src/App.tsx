@@ -19,6 +19,7 @@ import APIKeys from "./pages/APIKeys"
 import Chat from "./pages/Chat"
 import AdvancedChat from "./pages/AdvancedChat"
 import Images from "./pages/Images"
+import Videos from "./pages/Videos"
 import SystemManagement from "./pages/SystemManagement"
 import AdminOverview from "./pages/AdminOverview"
 import PublicContent from "./pages/PublicContent"
@@ -272,6 +273,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   if (normalizedPathname === "/chat/images") {
     return language === "zh" ? "AI 绘画" : language === "ja" ? "AI画像" : "AI Images"
   }
+  if (normalizedPathname === "/chat/videos") {
+    return language === "zh" ? "AI 视频" : language === "ja" ? "AI Videos" : "AI Videos"
+  }
   if (normalizedPathname === "/chat/agents") {
     return t("nav.agents")
   }
@@ -286,6 +290,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   }
   if (normalizedPathname === "/dashboard/images") {
     return language === "zh" ? "AI 绘画" : language === "ja" ? "AI画像" : "AI Images"
+  }
+  if (normalizedPathname === "/dashboard/videos") {
+    return language === "zh" ? "AI 视频" : language === "ja" ? "AI Videos" : "AI Videos"
   }
   if (normalizedPathname === "/dashboard/settings") {
     return t("settings.title")
@@ -455,6 +462,7 @@ function App() {
                 <Route path="api-keys" element={<APIKeys />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="images" element={<Images />} />
+                <Route path="videos" element={<Videos />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

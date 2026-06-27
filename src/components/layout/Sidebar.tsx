@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, Settings, Shield, Users, WalletCards } from "lucide-react"
+import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, Settings, Shield, Users, Video, WalletCards } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -7,7 +7,7 @@ import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { TranslationKey } from "@/lib/i18n"
 import type { PublicSettings } from "@/lib/public-settings"
-import { chatPathForSettings, imagePathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
+import { chatPathForSettings, imagePathForSettings, videoPathForSettings, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
 
 interface CurrentUser {
@@ -16,9 +16,9 @@ interface CurrentUser {
 
 interface MenuItem {
   icon: LucideIcon
-  labelKey: "nav.dashboard" | "nav.dataBoard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
+  labelKey: "nav.dashboard" | "nav.dataBoard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.videos" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
   path: string
-  settingKey: keyof PublicSettings
+  settingKey?: keyof PublicSettings
   children?: SystemSubItem[]
 }
 
@@ -44,6 +44,7 @@ const userMenuItems: MenuItem[] = [
   { icon: KeyRound, labelKey: "nav.apiKeys", path: "/dashboard/api-keys", settingKey: "sidebar_api_keys_enabled" },
   { icon: MessageSquare, labelKey: "nav.chat", path: "/dashboard/chat", settingKey: "sidebar_chat_enabled" },
   { icon: Palette, labelKey: "nav.images", path: "/dashboard/images", settingKey: "sidebar_images_enabled" },
+  { icon: Video, labelKey: "nav.videos", path: "/dashboard/videos" },
   { icon: Settings, labelKey: "nav.settings", path: "/dashboard/settings", settingKey: "sidebar_settings_enabled" },
 ]
 
@@ -74,6 +75,7 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
   const publicSettings = withPublicSettingsDefaults(settings)
   const chatPath = chatPathForSettings(publicSettings)
   const imagePath = imagePathForSettings(publicSettings)
+  const videoPath = videoPathForSettings(publicSettings)
   const visibleUserItems = userMenuItems
     .map((item) => {
       if (item.labelKey === "nav.chat") {
@@ -82,10 +84,13 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
       if (item.labelKey === "nav.images") {
         return { ...item, path: imagePath }
       }
+      if (item.labelKey === "nav.videos") {
+        return { ...item, path: videoPath }
+      }
       return item
     })
-    .filter((item) => publicSettings[item.settingKey] !== false)
-  const visibleAdminItems = adminMenuItems.filter((item) => publicSettings[item.settingKey] !== false)
+    .filter((item) => !item.settingKey || publicSettings[item.settingKey] !== false)
+  const visibleAdminItems = adminMenuItems.filter((item) => !item.settingKey || publicSettings[item.settingKey] !== false)
 
   return (
     <div className={cn("flex h-full w-64 flex-col border-r bg-card", className)}>
