@@ -1590,6 +1590,8 @@ const providerTypes = [
   { value: "completion", label: "OpenAI Chat Completions" },
   { value: "responses", label: "OpenAI Responses" },
   { value: "openai-video", label: "OpenAI Video" },
+  { value: "kling", label: "Kling" },
+  { value: "midjourney", label: "Midjourney" },
   { value: "openai", label: "OpenAI" },
   { value: "newapi", label: "NewAPI" },
   { value: "oneapi", label: "One API" },

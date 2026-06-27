@@ -595,6 +595,10 @@ function videoResultsFromPayload(payload: unknown): VideoResult[] {
   if (!isRecord(payload)) {
     return []
   }
+  const taskResult = isRecord(payload.task_result) ? payload.task_result : isRecord(payload.taskResult) ? payload.taskResult : null
+  if (taskResult && Array.isArray(taskResult.videos)) {
+    return taskResult.videos.map(videoResultFromItem).filter((item) => item.url || item.b64_json || item.status)
+  }
   if (isRecord(payload.upstream_response)) {
     const nested = videoResultsFromPayload(payload.upstream_response)
     if (nested.length > 0) {
@@ -603,6 +607,12 @@ function videoResultsFromPayload(payload: unknown): VideoResult[] {
   }
   if (Array.isArray(payload.data)) {
     return payload.data.map(videoResultFromItem).filter((item) => item.url || item.b64_json || item.status)
+  }
+  if (isRecord(payload.data)) {
+    const nested = videoResultsFromPayload(payload.data)
+    if (nested.length > 0) {
+      return nested
+    }
   }
   const item = videoResultFromItem(payload)
   return item.url || item.b64_json || item.status ? [item] : []
