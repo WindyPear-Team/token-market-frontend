@@ -45,7 +45,7 @@ export default function AdvancedChatFiles() {
   const [downloadingID, setDownloadingID] = useState("")
 
   const { data: settings } = useQuery<AdvancedChatSettings>({
-    queryKey: ["advanced-chat-user-settings"],
+    queryKey: ["advanced-chat-file-settings"],
     queryFn: async () => {
       const res = await api.get("/user/advanced-chat/settings")
       return normalizeSettings(res.data)
@@ -83,7 +83,7 @@ export default function AdvancedChatFiles() {
       }
       success(copy.uploaded.replace("{count}", String(uploaded)))
       await queryClient.invalidateQueries({ queryKey: filesQueryKey })
-      await queryClient.invalidateQueries({ queryKey: ["advanced-chat-user-settings"] })
+      await queryClient.invalidateQueries({ queryKey: ["advanced-chat-file-settings"] })
     } catch (err) {
       error(apiErrorMessage(err, copy.uploadFailed))
     } finally {
@@ -100,7 +100,7 @@ export default function AdvancedChatFiles() {
       await api.delete(`/user/advanced-chat/files/${encodeURIComponent(file.id)}`)
       success(copy.deleted)
       await queryClient.invalidateQueries({ queryKey: filesQueryKey })
-      await queryClient.invalidateQueries({ queryKey: ["advanced-chat-user-settings"] })
+      await queryClient.invalidateQueries({ queryKey: ["advanced-chat-file-settings"] })
     } catch (err) {
       error(apiErrorMessage(err, copy.deleteFailed))
     } finally {

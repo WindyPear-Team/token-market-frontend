@@ -222,6 +222,7 @@ type ChatMode = "basic" | "advanced"
 type ChatRunMode = "chat" | "assistant"
 type SessionConfigTab = "basic" | "agent" | "skills" | "mcp" | "device"
 type AttachmentTarget = "composer" | "editor"
+type ComposerControlMenu = "" | "mode" | "device" | "workspace"
 
 interface ChatProps {
   variant?: ChatMode
@@ -338,11 +339,14 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false)
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false)
   const [selectingFileID, setSelectingFileID] = useState("")
+  const [attachmentMenuTarget, setAttachmentMenuTarget] = useState<AttachmentTarget | "">("")
+  const [composerControlMenu, setComposerControlMenu] = useState<ComposerControlMenu>("")
   const [isSending, setIsSending] = useState(false)
   const [isStreamActive, setIsStreamActive] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [showJumpToLatest, setShowJumpToLatest] = useState(false)
   const [editingMessageID, setEditingMessageID] = useState("")
   const [editingText, setEditingText] = useState("")
@@ -538,6 +542,19 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     [currentSession?.connector_device_id, connectorDevices]
   )
   const selectableConnectorDevices = assistantConnectorToolsEnabled ? connectorDevices : []
+  const currentConnectorDeviceID = currentSession?.connector_device_id || ""
+  const currentConnectorDevice = connectorDevices.find((device) => device.id === currentConnectorDeviceID)
+  const recentWorkspacePaths = useMemo(() => {
+    const deviceID = currentConnectorDeviceID
+    if (!deviceID) {
+      return []
+    }
+    return uniqueStrings(
+      sessions
+        .filter((session) => session.connector_device_id === deviceID && session.connector_workspace_path)
+        .map((session) => session.connector_workspace_path || "")
+    ).slice(0, 6)
+  }, [currentConnectorDeviceID, sessions])
 
   useEffect(() => {
     if (isAdvanced) {
@@ -627,6 +644,15 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       requestAnimationFrame(() => scrollMessagesToLatest("smooth"))
     }
   }, [latestMessageSignal, showJumpToLatest])
+
+  useEffect(() => {
+    const textarea = composerTextareaRef.current
+    if (!isAdvanced || !textarea || currentSession?.messages.length === 0) {
+      return
+    }
+    textarea.style.height = "40px"
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 40), 160)}px`
+  }, [prompt, currentSession?.id, currentSession?.messages.length, isAdvanced])
 
   useEffect(() => {
     if (modelName) {
@@ -891,11 +917,15 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!isAdvanced || !currentSession) {
       return
     }
+    if (currentSession.run_mode === "assistant" && mode === "chat") {
+      return
+    }
     if (mode === "assistant" && !assistantModeEnabled) {
       error(copy.assistantModeDisabled)
       return
     }
     updateSession(currentSession.id, (session) => ({ ...session, run_mode: mode }), { persist: true })
+    setComposerControlMenu("")
   }
 
   const addSessionSkill = (skillID: string) => {
@@ -963,6 +993,52 @@ export default function Chat({ variant = "basic" }: ChatProps) {
       connector_auto_approve: autoApprove,
       connector_command_prefixes: uniqueStrings(commandPrefixes),
     }), { persist: true })
+  }
+
+  const setSessionConnectorDevice = (deviceID: string) => {
+    if (!currentSession) {
+      return
+    }
+    if (!assistantConnectorToolsEnabled) {
+      error(copy.assistantWorkspaceToolsDisabled)
+      return
+    }
+    const keepWorkspace = currentSession.connector_device_id === deviceID ? currentSession.connector_workspace_path : ""
+    updateSession(currentSession.id, (session) => ({
+      ...session,
+      connector_device_id: deviceID || undefined,
+      connector_workspace_path: keepWorkspace || undefined,
+    }), { persist: true })
+    setPendingConnectorDeviceID(deviceID)
+    setPendingConnectorWorkspace(keepWorkspace || "")
+    setComposerControlMenu("")
+  }
+
+  const setSessionWorkspacePath = (workspacePath: string) => {
+    if (!currentSession) {
+      return
+    }
+    const path = workspacePath.trim()
+    const deviceID = currentSession.connector_device_id || ""
+    if (!deviceID || !path) {
+      return
+    }
+    setSessionConnector(
+      deviceID,
+      path,
+      currentSession.connector_auto_approve || pendingConnectorAutoApprove,
+      currentSession.connector_command_prefixes || commandPrefixesFromText(pendingConnectorCommandPrefixes)
+    )
+    setPendingConnectorWorkspace(path)
+    setComposerControlMenu("")
+  }
+
+  const promptForWorkspacePath = () => {
+    const initial = currentSession?.connector_workspace_path || pendingConnectorWorkspace
+    const path = window.prompt(copy.workspacePathPlaceholder, initial)
+    if (path !== null) {
+      setSessionWorkspacePath(path)
+    }
   }
 
   const clearSessionConnector = () => {
@@ -1391,6 +1467,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     if (!isAdvanced || !files?.length) {
       return
     }
+    setAttachmentMenuTarget("")
     if (!currentAdvancedSettings.file_storage_enabled) {
       error(fileCopy.storageDisabled)
       return
@@ -1456,6 +1533,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
   }
 
   const openFilePicker = (target: AttachmentTarget) => {
+    setAttachmentMenuTarget("")
     setFilePickerTarget(target)
     setIsFilePickerOpen(true)
   }
@@ -1468,11 +1546,224 @@ export default function Chat({ variant = "basic" }: ChatProps) {
     setEditingAttachments((current) => current.filter((attachment) => attachment.id !== id))
   }
 
+  const attachmentMenuButton = (target: AttachmentTarget, className = "") => {
+    const open = attachmentMenuTarget === target
+    const disabled = !currentAdvancedSettings.file_storage_enabled
+    return (
+      <div className={cn("relative shrink-0", className)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          disabled={disabled}
+          aria-label={copy.addAttachment}
+          aria-expanded={open}
+          onClick={() => setAttachmentMenuTarget((current) => current === target ? "" : target)}
+        >
+          <Plus size={16} />
+        </Button>
+        {open && (
+          <div className="absolute bottom-full left-0 z-30 mb-2 w-44 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg">
+            <label className={cn(
+              "flex h-9 cursor-pointer items-center gap-2 rounded px-2 text-sm hover:bg-muted",
+              isUploadingAttachments && "pointer-events-none opacity-50"
+            )}>
+              <Paperclip size={15} />
+              {isUploadingAttachments ? fileCopy.uploading : copy.addAttachment}
+              <input
+                className="sr-only"
+                type="file"
+                multiple
+                disabled={isUploadingAttachments || disabled}
+                onChange={(event) => {
+                  handleAttachmentFiles(event.target.files, target)
+                  event.target.value = ""
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="flex h-9 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+              disabled={disabled}
+              onClick={() => openFilePicker(target)}
+            >
+              <FileText size={15} />
+              {fileCopy.selectFile}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const advancedComposerActionButton = (className = "") => {
+    if (isStreamActive || isActiveRunRunning || isSending) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={className}
+          disabled={isStopping}
+          onClick={stopActiveTask}
+          title={copy.stopTask}
+          aria-label={copy.stopTask}
+        >
+          <X size={16} />
+        </Button>
+      )
+    }
+    const title = activeRunMode === "assistant" ? copy.runAssistant : copy.send
+    return (
+      <Button
+        type="button"
+        size="icon"
+        className={className}
+        disabled={(!prompt.trim() && attachments.length === 0) || isSending || isUploadingAttachments || isActiveRunRunning}
+        onClick={sendMessage}
+        title={title}
+        aria-label={title}
+      >
+        <Send size={16} />
+      </Button>
+    )
+  }
+
+  const composerModeControl = () => {
+    const open = composerControlMenu === "mode"
+    const chatLocked = currentSession?.run_mode === "assistant"
+    return (
+      <div className="relative min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 w-full justify-between gap-2 px-2 text-xs"
+          onClick={() => setComposerControlMenu((current) => current === "mode" ? "" : "mode")}
+        >
+          <span className="truncate">{activeRunMode === "assistant" ? copy.assistantMode : copy.chatMode}</span>
+          <ArrowDown className="h-3.5 w-3.5 rotate-180" />
+        </Button>
+        {open && (
+          <div className="absolute bottom-full left-0 z-30 mb-2 w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg">
+            {(["chat", "assistant"] as const).map((mode) => {
+              const disabled = (mode === "chat" && chatLocked) || (mode === "assistant" && !assistantModeEnabled)
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  className={cn(
+                    "flex h-9 w-full items-center justify-between rounded px-2 text-left text-sm hover:bg-muted",
+                    activeRunMode === mode && "bg-primary/10 text-primary",
+                    disabled && "pointer-events-none opacity-40"
+                  )}
+                  disabled={disabled}
+                  onClick={() => setSessionRunMode(mode)}
+                >
+                  <span>{mode === "assistant" ? copy.assistantMode : copy.chatMode}</span>
+                  {activeRunMode === mode && <Check size={14} />}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const composerDeviceControl = () => {
+    const open = composerControlMenu === "device"
+    return (
+      <div className="relative min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 w-full justify-between gap-2 px-2 text-xs"
+          disabled={!assistantConnectorToolsEnabled}
+          onClick={() => setComposerControlMenu((current) => current === "device" ? "" : "device")}
+        >
+          <span className="truncate">{currentConnectorDevice?.name || copy.selectDevice}</span>
+          <ArrowDown className="h-3.5 w-3.5 rotate-180" />
+        </Button>
+        {open && (
+          <div className="absolute bottom-full left-1/2 z-30 mb-2 w-56 -translate-x-1/2 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg">
+            {selectableConnectorDevices.length === 0 ? (
+              <div className="px-2 py-3 text-center text-xs text-muted-foreground">{copy.noDevices}</div>
+            ) : (
+              selectableConnectorDevices.map((device) => (
+                <button
+                  key={device.id}
+                  type="button"
+                  className="flex h-10 w-full items-center justify-between gap-2 rounded px-2 text-left text-sm hover:bg-muted"
+                  onClick={() => setSessionConnectorDevice(device.id)}
+                >
+                  <span className="min-w-0 truncate">{device.name}</span>
+                  <span className={cn("shrink-0 text-[11px]", device.online ? "text-emerald-600" : "text-muted-foreground")}>
+                    {device.online ? copy.deviceOnline : copy.deviceOffline}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const composerWorkspaceControl = () => {
+    const open = composerControlMenu === "workspace"
+    const disabled = !currentConnectorDeviceID
+    return (
+      <div className="relative min-w-0">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 w-full justify-between gap-2 px-2 text-xs"
+          disabled={disabled}
+          onClick={() => setComposerControlMenu((current) => current === "workspace" ? "" : "workspace")}
+        >
+          <span className="truncate">{currentSession?.connector_workspace_path || copy.workspacePath}</span>
+          <ArrowDown className="h-3.5 w-3.5 rotate-180" />
+        </Button>
+        {open && (
+          <div className="absolute bottom-full right-0 z-30 mb-2 w-72 rounded-md border bg-popover p-1 text-popover-foreground shadow-lg">
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{currentConnectorDevice?.name || copy.selectDevice}</div>
+            {recentWorkspacePaths.length === 0 ? (
+              <div className="px-2 py-3 text-center text-xs text-muted-foreground">{copy.noWorkspaces}</div>
+            ) : (
+              recentWorkspacePaths.map((workspacePath) => (
+                <button
+                  key={workspacePath}
+                  type="button"
+                  className="flex min-h-9 w-full items-center rounded px-2 text-left text-sm hover:bg-muted"
+                  onClick={() => setSessionWorkspacePath(workspacePath)}
+                >
+                  <span className="truncate">{workspacePath}</span>
+                </button>
+              ))
+            )}
+            <div className="mt-1 border-t pt-1">
+              <button
+                type="button"
+                className="flex h-9 w-full items-center gap-2 rounded px-2 text-left text-sm hover:bg-muted"
+                onClick={promptForWorkspacePath}
+              >
+                <Plus size={14} />
+                {copy.selectWorkspace}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   function cancelEdit() {
     setEditingMessageID("")
     setEditingText("")
     setEditingAttachments([])
     setFilePickerTarget("composer")
+    setAttachmentMenuTarget("")
+    setComposerControlMenu("")
   }
 
   const basicConfig = (
@@ -1529,38 +1820,12 @@ export default function Chat({ variant = "basic" }: ChatProps) {
           <X size={16} />
         </Button>
       </div>
-      {isAdvanced && (
-        <div className="border-b p-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
-              <Server size={15} />
-              <span className="truncate">{copy.connectedDevices}</span>
-            </div>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/chat/devices">
-              {copy.devices}
-              </Link>
-            </Button>
-          </div>
-          {connectorDevices.length === 0 ? (
-            <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">{copy.noDevices}</div>
-          ) : (
-            <div className="space-y-2">
-              {connectorDevices.slice(0, 4).map((device) => (
-                <div key={device.id} className="rounded-md border bg-background px-3 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-sm">{device.name}</span>
-                    <span className={cn("shrink-0 text-[11px]", device.online ? "text-emerald-600" : "text-muted-foreground")}>
-                      {device.online ? copy.deviceOnline : copy.deviceOffline}
-                    </span>
-                  </div>
-                  {device.remark && <div className="mt-1 truncate text-[11px] text-muted-foreground">{device.remark}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <div className="border-b p-4">
+        <Button className="w-full gap-2" onClick={createNewSession}>
+          <MessageSquarePlus size={16} />
+          {copy.newSession}
+        </Button>
+      </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
         {sessions.map((session) => (
           <div
@@ -1619,54 +1884,31 @@ export default function Chat({ variant = "basic" }: ChatProps) {
         )
 
   return (
-    <div className="space-y-6 xl:pr-72">
+    <div className={cn(isAdvanced ? "flex min-h-[calc(100vh-4rem)] flex-col xl:pr-72" : "space-y-6 xl:pr-72")}>
       {sessionsSidebarPortal}
-      <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:-mx-8 lg:px-8">
-        <h1 className="text-3xl font-bold">{copy.title}</h1>
-        <div className="flex flex-wrap gap-2">
-          {isAdvanced && assistantModeEnabled && (
-            <div className="inline-flex rounded-md border bg-background p-1">
-              {(["chat", "assistant"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={cn(
-                    "h-8 rounded px-3 text-sm transition-colors",
-                    activeRunMode === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                  onClick={() => setSessionRunMode(mode)}
-                  disabled={isSending || isActiveRunRunning}
-                >
-                  {mode === "assistant" ? copy.assistantMode : copy.chatMode}
-                </button>
-              ))}
-            </div>
-          )}
+      <div className="sticky top-0 z-10 -mx-4 flex justify-end border-b bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            className="gap-2 xl:hidden"
+            size="icon"
+            className="xl:hidden"
             onClick={() => setIsSessionsSidebarOpen((open) => !open)}
             aria-label={isSessionsSidebarOpen ? copy.closeSessions : copy.openSessions}
             aria-expanded={isSessionsSidebarOpen}
+            title={isSessionsSidebarOpen ? copy.closeSessions : copy.openSessions}
           >
             <Menu size={16} />
-            {copy.sessions}
           </Button>
           {isAdvanced && (
-            <Button variant="outline" className="gap-2" onClick={() => openAdvancedConfig()}>
+            <Button variant="outline" size="icon" onClick={() => openAdvancedConfig()} aria-label={copy.config} title={copy.config}>
               <Settings size={16} />
-              {copy.config}
             </Button>
           )}
-          <Button className="gap-2" onClick={createNewSession}>
-            <MessageSquarePlus size={16} />
-            {copy.newSession}
-          </Button>
         </div>
       </div>
 
       <PageTitleSlot />
-      <div className="space-y-4">
+      <div className={cn(isAdvanced ? "flex min-h-0 flex-1 flex-col" : "space-y-4")}>
         {!isAdvanced && basicConfig}
 
         {isAdvanced && currentSession?.messages.length === 0 ? (
@@ -1761,10 +2003,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             </div>
           </div>
         ) : (
-          <Card>
-            <CardHeader>
+          <div className={cn(isAdvanced ? "flex min-h-0 flex-1 flex-col" : "rounded-lg border bg-card text-card-foreground shadow-sm")}>
+            <div className={cn(isAdvanced ? (isActiveRunRunning && activeRun ? "shrink-0 pb-2" : "sr-only") : "flex flex-col space-y-1.5 p-6")}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>{copy.conversation}</CardTitle>
+                <CardTitle className={cn(isAdvanced && "sr-only")}>{copy.conversation}</CardTitle>
                 {isAdvanced && (
                   <div className="flex flex-wrap items-center gap-2">
                     {isActiveRunRunning && activeRun && (
@@ -1775,9 +2017,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                   </div>
                 )}
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="min-h-[360px] space-y-3 rounded-md border p-3">
+            </div>
+            <div className={cn(isAdvanced ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-4 p-6 pt-0")}>
+              <div className={cn(isAdvanced ? "min-h-[360px] flex-1 space-y-3 py-3" : "min-h-[360px] space-y-3 rounded-md border p-3")}>
                 {!currentSession || currentSession.messages.length === 0 ? (
                   <div className="py-20 text-center text-sm text-muted-foreground">{copy.noMessages}</div>
                 ) : (
@@ -1808,30 +2050,7 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                                   )}
                                   {isAdvanced && message.role === "user" && (
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs font-medium text-foreground hover:bg-muted">
-                                        <Paperclip size={14} />
-                                        {isUploadingAttachments ? fileCopy.uploading : copy.addAttachment}
-                                        <input
-                                          className="sr-only"
-                                          type="file"
-                                          multiple
-                                          disabled={isUploadingAttachments || !currentAdvancedSettings.file_storage_enabled}
-                                          onChange={(event) => {
-                                            handleAttachmentFiles(event.target.files, "editor")
-                                            event.target.value = ""
-                                          }}
-                                        />
-                                      </label>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2"
-                                        disabled={!currentAdvancedSettings.file_storage_enabled}
-                                        onClick={() => openFilePicker("editor")}
-                                      >
-                                        <FileText size={14} />
-                                        {fileCopy.selectFile}
-                                      </Button>
+                                      {attachmentMenuButton("editor")}
                                     </div>
                                   )}
                                 </div>
@@ -1898,13 +2117,39 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                 <AttachmentChips attachments={attachments} removeLabel={copy.removeAttachment} onRemove={removeAttachment} />
               )}
 
-              <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-                <div className="space-y-2">
+              {isAdvanced ? (
+                <div className="sticky bottom-0 -mx-4 space-y-2 border-t bg-background px-4 py-3 sm:mx-0 sm:rounded-t-md sm:border sm:bg-card">
+                  <div className="flex items-end gap-2">
+                    {attachmentMenuButton("composer")}
+                    <textarea
+                      ref={composerTextareaRef}
+                      className="h-10 max-h-40 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border bg-background px-3 py-0 text-sm leading-10 outline-none focus:ring-2 focus:ring-ring"
+                      rows={1}
+                      value={prompt}
+                      placeholder={activeRunMode === "assistant" ? copy.assistantPromptPlaceholder : copy.promptPlaceholder}
+                      disabled={isActiveRunRunning}
+                      onChange={(event) => setPrompt(event.target.value)}
+                      onKeyDown={(event) => {
+                        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                          event.preventDefault()
+                          sendMessage()
+                        }
+                      }}
+                    />
+                    {advancedComposerActionButton()}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {composerModeControl()}
+                    {composerDeviceControl()}
+                    {composerWorkspaceControl()}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                   <textarea
-                    className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm leading-5 outline-none focus:ring-2 focus:ring-ring"
                     value={prompt}
-                    placeholder={isAdvanced && activeRunMode === "assistant" ? copy.assistantPromptPlaceholder : copy.promptPlaceholder}
-                    disabled={isActiveRunRunning}
+                    placeholder={copy.promptPlaceholder}
                     onChange={(event) => setPrompt(event.target.value)}
                     onKeyDown={(event) => {
                       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -1913,58 +2158,19 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                       }
                     }}
                   />
-                  {isAdvanced && (
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted">
-                        <Paperclip size={15} />
-                        {isUploadingAttachments ? fileCopy.uploading : copy.addAttachment}
-                        <input
-                          className="sr-only"
-                          type="file"
-                          multiple
-                          disabled={isUploadingAttachments || !currentAdvancedSettings.file_storage_enabled}
-                          onChange={(event) => {
-                            handleAttachmentFiles(event.target.files, "composer")
-                            event.target.value = ""
-                          }}
-                        />
-                      </label>
-                      <Button
-                        variant="outline"
-                        className="gap-2"
-                        disabled={!currentAdvancedSettings.file_storage_enabled}
-                        onClick={() => openFilePicker("composer")}
-                      >
-                        <FileText size={15} />
-                        {fileCopy.selectFile}
-                      </Button>
-                      <span>
-                        {copy.attachmentLimit
-                          .replace("{size}", String(currentAdvancedSettings.attachment_max_mb))
-                          .replace("{types}", currentAdvancedSettings.attachment_allowed_types.join(", "))}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {isAdvanced && (isStreamActive || isActiveRunRunning || isSending) ? (
-                  <div className="flex items-center justify-end gap-2 self-end">
-                    <Button variant="outline" className="gap-2" disabled={isStopping} onClick={stopActiveTask}>
-                      <X size={16} />
-                      {copy.stopTask}
-                    </Button>
-                    <span className="text-xs text-muted-foreground">{copy.sending}</span>
-                  </div>
-                ) : (
-                  <Button className="gap-2 self-end" disabled={(!prompt.trim() && attachments.length === 0) || isSending || isUploadingAttachments || isActiveRunRunning} onClick={sendMessage}>
+                  <Button
+                    type="button"
+                    className="gap-2 self-end"
+                    disabled={(!prompt.trim() && attachments.length === 0) || isSending || isUploadingAttachments || isActiveRunRunning}
+                    onClick={sendMessage}
+                  >
                     <Send size={16} />
-                    {isSending || isActiveRunRunning
-                      ? copy.sending
-                      : isAdvanced && activeRunMode === "assistant" ? copy.runAssistant : copy.send}
+                    {isSending || isActiveRunRunning ? copy.sending : copy.send}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

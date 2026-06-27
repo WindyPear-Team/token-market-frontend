@@ -73,21 +73,23 @@ export default function AdvancedChatMCP() {
 
   useEffect(() => {
     if (settings) {
-      setCustomServers(settings.custom_mcp_servers)
+      setCustomServers(Array.isArray(settings.custom_mcp_servers) ? settings.custom_mcp_servers : [])
     }
   }, [settings])
 
-  const builtinServerIDs = useMemo(() => new Set((settings?.builtin_mcp_servers || []).map((server) => server.id)), [settings?.builtin_mcp_servers])
+  const builtinServers = Array.isArray(settings?.builtin_mcp_servers) ? settings.builtin_mcp_servers : []
+  const settingsServers = Array.isArray(settings?.mcp_servers) ? settings.mcp_servers : []
+  const builtinServerIDs = useMemo(() => new Set(builtinServers.filter(Boolean).map((server) => server.id)), [builtinServers])
   const allServers = useMemo(() => {
-    const merged = settings?.mcp_servers?.length
-      ? settings.mcp_servers
-      : mergeMCPServers(settings?.builtin_mcp_servers || [], customServers)
-    const customByID = new Map(customServers.map((server) => [server.id, server]))
-    return merged.map((server) => ({
+    const merged = settingsServers.length
+      ? settingsServers
+      : mergeMCPServers(builtinServers, customServers)
+    const customByID = new Map((Array.isArray(customServers) ? customServers : []).filter(Boolean).map((server) => [server.id, server]))
+    return merged.filter(Boolean).map((server) => ({
       ...(customByID.get(server.id) || server),
       readonly: builtinServerIDs.has(server.id),
     }))
-  }, [builtinServerIDs, customServers, settings?.builtin_mcp_servers, settings?.mcp_servers])
+  }, [builtinServerIDs, builtinServers, customServers, settingsServers])
 
   const saveServers = useMutation({
     mutationFn: async () => {
@@ -287,10 +289,13 @@ function createID() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-function mergeMCPServers(...groups: MCPServer[][]) {
+function mergeMCPServers(...groups: Array<Array<MCPServer | null | undefined> | null | undefined>) {
   const servers: MCPServer[] = []
   const seen = new Set<string>()
-  for (const server of groups.flat()) {
+  const items = groups
+    .flatMap((group) => Array.isArray(group) ? group : [])
+    .filter((server): server is MCPServer => Boolean(server))
+  for (const server of items) {
     if (!server.id || seen.has(server.id)) {
       continue
     }
