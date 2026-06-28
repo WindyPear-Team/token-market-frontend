@@ -68,6 +68,12 @@ export interface PublicSettings {
   reliability_auto_detect_timeout_seconds: string
   reliability_auto_recover_enabled: boolean
   reliability_recovery_after_seconds: string
+  log_retention_api_days: string
+  log_retention_login_days: string
+  log_retention_admin_days: string
+  log_retention_system_days: string
+  log_retention_token_days: string
+  log_retention_cleanup_interval_hours: string
   checkin_enabled: boolean
   checkin_daily_reward: string
   checkin_random_enabled: boolean
@@ -159,6 +165,12 @@ export const defaultPublicSettings: PublicSettings = {
   reliability_auto_detect_timeout_seconds: "10",
   reliability_auto_recover_enabled: false,
   reliability_recovery_after_seconds: "1800",
+  log_retention_api_days: "0",
+  log_retention_login_days: "0",
+  log_retention_admin_days: "0",
+  log_retention_system_days: "0",
+  log_retention_token_days: "0",
+  log_retention_cleanup_interval_hours: "24",
   checkin_enabled: false,
   checkin_daily_reward: "0",
   checkin_random_enabled: false,

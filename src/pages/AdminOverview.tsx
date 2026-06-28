@@ -1,7 +1,9 @@
-import { Activity, BarChart3, Database, DollarSign, LineChart, PieChart, Users } from "lucide-react"
+import { Activity, BarChart3, Database, DollarSign, FileText, LineChart, PieChart, Users } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { PageInlineSlot, PageTitleSlot } from "@/components/layout/PageTitleSlot"
 import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
@@ -75,9 +77,17 @@ export default function AdminOverview() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">{copy.title}</h1>
-        <div className="mt-2 text-sm text-muted-foreground">{copy.subtitle}</div>
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">{copy.title}</h1>
+          <div className="mt-2 text-sm text-muted-foreground">{copy.subtitle}</div>
+        </div>
+        <Button asChild className="gap-2 self-start">
+          <Link to="/dashboard/admin-logs">
+            <FileText size={16} />
+            {copy.auditLogs}
+          </Link>
+        </Button>
       </div>
 
       <PageTitleSlot />
@@ -457,6 +467,7 @@ const zhCopy = {
   inputTokens: "输入 Token",
   outputTokens: "输出 Token",
   noData: "暂无数据",
+  auditLogs: "日志查看",
 }
 
 const enCopy: AdminOverviewCopy = {
@@ -474,6 +485,7 @@ const enCopy: AdminOverviewCopy = {
   inputTokens: "Input Tokens",
   outputTokens: "Output Tokens",
   noData: "No data",
+  auditLogs: "Audit Logs",
 }
 
 const chartColors = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"]

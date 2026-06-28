@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, Settings, Shield, Users, Video, WalletCards } from "lucide-react"
+import { BarChart3, Boxes, ChevronDown, Database, History, KeyRound, LayoutDashboard, MessageSquare, Palette, ScrollText, Settings, Shield, Users, Video, WalletCards } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -16,7 +16,7 @@ interface CurrentUser {
 
 interface MenuItem {
   icon: LucideIcon
-  labelKey: "nav.dashboard" | "nav.dataBoard" | "nav.details" | "nav.wallet" | "nav.apiKeys" | "nav.chat" | "nav.images" | "nav.videos" | "nav.settings" | "nav.adminOverview" | "nav.system" | "nav.channels" | "nav.models" | "nav.users"
+  labelKey: TranslationKey
   path: string
   settingKey?: keyof PublicSettings
   children?: SystemSubItem[]
@@ -50,6 +50,7 @@ const userMenuItems: MenuItem[] = [
 
 const adminMenuItems: MenuItem[] = [
   { icon: BarChart3, labelKey: "nav.adminOverview", path: "/dashboard/admin-overview", settingKey: "sidebar_admin_overview_enabled" },
+  { icon: ScrollText, labelKey: "nav.auditLogs", path: "/dashboard/admin-logs", settingKey: "sidebar_admin_overview_enabled" },
   { icon: Shield, labelKey: "nav.system", path: "/dashboard/admin/general", settingKey: "sidebar_system_enabled", children: systemSubItems },
   { icon: Database, labelKey: "nav.channels", path: "/dashboard/channels", settingKey: "sidebar_channels_enabled" },
   { icon: Boxes, labelKey: "nav.models", path: "/dashboard/models", settingKey: "sidebar_models_enabled" },

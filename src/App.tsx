@@ -22,6 +22,7 @@ import Images from "./pages/Images"
 import Videos from "./pages/Videos"
 import SystemManagement from "./pages/SystemManagement"
 import AdminOverview from "./pages/AdminOverview"
+import AdminAuditLogs from "./pages/AdminAuditLogs"
 import PublicContent from "./pages/PublicContent"
 import StatusPage from "./pages/StatusPage"
 import api from "./lib/api"
@@ -237,6 +238,9 @@ function pageTitleForPath(pathname: string, language: Language, t: Translate) {
   if (normalizedPathname === "/dashboard/admin-overview") {
     return t("nav.adminOverview")
   }
+  if (normalizedPathname === "/dashboard/admin-logs" || normalizedPathname === "/dashboard/admin-overview/logs") {
+    return language === "zh" ? "日志查看" : "Audit Logs"
+  }
   if (normalizedPathname === "/dashboard/advanced-chat") {
     return t("nav.advancedChat")
   }
@@ -367,6 +371,15 @@ function App() {
                     </AdminRoute>
                   }
                 />
+                <Route
+                  path="admin-logs"
+                  element={
+                    <AdminRoute>
+                      <AdminAuditLogs />
+                    </AdminRoute>
+                  }
+                />
+                <Route path="admin-overview/logs" element={<Navigate to="/dashboard/admin-logs" replace />} />
                 <Route
                   path="advanced-chat"
                   element={<Navigate to="/dashboard/admin/advanced-chat" replace />}

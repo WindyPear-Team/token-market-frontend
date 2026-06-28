@@ -273,6 +273,7 @@ type SystemTab =
   | "navigation"
   | "statusMonitor"
   | "reliability"
+  | "logCleanup"
   | "groups"
   | "metaModels"
   | "advancedChatAssistant"
@@ -288,7 +289,7 @@ const systemSectionTabs: Record<SystemSection, SystemTab[]> = {
   theme: ["theme"],
   auth: ["auth", "email"],
   content: ["content", "topNavigation", "navigation"],
-  operations: ["statusMonitor", "reliability", "payment", "groups", "metaModels", "subscriptionPlans", "redeemCodes"],
+  operations: ["statusMonitor", "reliability", "logCleanup", "payment", "groups", "metaModels", "subscriptionPlans", "redeemCodes"],
   advancedChat: ["advancedChatAssistant", "advancedChatAttachments", "advancedChatMCP"],
   subscriptions: ["subscriptionPlans"],
   redeemCodes: ["redeemCodes"],
@@ -1416,6 +1417,23 @@ export default function SystemManagement({ section = "general", initialTab }: { 
         </SettingsPanel>
       )}
 
+      {activeTab === "logCleanup" && (
+        <SettingsPanel title={copy.logCleanup}>
+          <div className="space-y-5">
+            <SectionTitle title={copy.logCleanupTitle} description={copy.logCleanupDescription} />
+            <div className="grid gap-3 lg:grid-cols-3">
+              <TextField label={copy.logRetentionAPIDays} value={form.log_retention_api_days} placeholder="0" type="number" onChange={(value) => updateField("log_retention_api_days", value)} />
+              <TextField label={copy.logRetentionLoginDays} value={form.log_retention_login_days} placeholder="0" type="number" onChange={(value) => updateField("log_retention_login_days", value)} />
+              <TextField label={copy.logRetentionAdminDays} value={form.log_retention_admin_days} placeholder="0" type="number" onChange={(value) => updateField("log_retention_admin_days", value)} />
+              <TextField label={copy.logRetentionSystemDays} value={form.log_retention_system_days} placeholder="0" type="number" onChange={(value) => updateField("log_retention_system_days", value)} />
+              <TextField label={copy.logRetentionTokenDays} value={form.log_retention_token_days} placeholder="0" type="number" onChange={(value) => updateField("log_retention_token_days", value)} />
+              <TextField label={copy.logRetentionCleanupIntervalHours} value={form.log_retention_cleanup_interval_hours} placeholder="24" type="number" onChange={(value) => updateField("log_retention_cleanup_interval_hours", value)} />
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{copy.logCleanupHint}</p>
+          </div>
+        </SettingsPanel>
+      )}
+
       {activeTab === "groups" && (
         <SettingsPanel title={copy.groups}>
           <div className="space-y-5">
@@ -1831,6 +1849,7 @@ function systemTabs(copy: SystemCopy): Array<{ id: SystemTab; label: string; ico
     { id: "navigation", label: copy.navigation, icon: ToggleLeft },
     { id: "statusMonitor", label: copy.statusMonitor, icon: Activity },
     { id: "reliability", label: copy.reliability, icon: RefreshCw },
+    { id: "logCleanup", label: copy.logCleanup, icon: Trash2 },
     { id: "groups", label: copy.groups, icon: Layers },
     { id: "metaModels", label: copy.metaModels, icon: Layers },
     { id: "advancedChatAssistant", label: copy.advancedChatAssistant, icon: Bot },
@@ -3535,6 +3554,7 @@ const zhCopy = {
   navigation: "侧边栏模块",
   statusMonitor: "状态监测",
   reliability: "可靠性",
+  logCleanup: "日志清理",
   groups: "用户分组",
   advancedChat: "高级聊天",
   advancedChatAssistant: "助理设置",
@@ -3592,6 +3612,15 @@ const zhCopy = {
   reliabilityAutoRecoverEnabled: "自动恢复被禁用渠道",
   reliabilityRecoveryAfterSeconds: "恢复等待时间（秒）",
   reliabilityHint: "网络错误、401/403、408/429 和 5xx 会累计失败；普通 400 请求错误不会自动禁用渠道。",
+  logCleanupTitle: "日志自动清理",
+  logCleanupDescription: "按日志类型分别设置保留时间，后台会按间隔自动删除过期记录。",
+  logRetentionAPIDays: "API 调用日志保留天数",
+  logRetentionLoginDays: "登录日志保留天数",
+  logRetentionAdminDays: "管理修改日志保留天数",
+  logRetentionSystemDays: "系统日志保留天数",
+  logRetentionTokenDays: "计费调用日志保留天数",
+  logRetentionCleanupIntervalHours: "清理间隔（小时）",
+  logCleanupHint: "保留天数填 0 表示不自动清理。计费调用日志会影响调用明细和统计趋势，缩短前请确认合规和对账要求。",
   statusUp: "正常",
   statusDown: "故障",
   statusPending: "等待",
@@ -3897,6 +3926,7 @@ const enCopy: SystemCopy = {
   navigation: "Sidebar Modules",
   statusMonitor: "Status Monitor",
   reliability: "Reliability",
+  logCleanup: "Log Cleanup",
   groups: "User Groups",
   advancedChat: "Advanced Chat",
   advancedChatAssistant: "Assistant",
@@ -3954,6 +3984,15 @@ const enCopy: SystemCopy = {
   reliabilityAutoRecoverEnabled: "Automatically recover disabled channels",
   reliabilityRecoveryAfterSeconds: "Recovery wait time (seconds)",
   reliabilityHint: "Network errors, 401/403, 408/429, and 5xx responses count as failures. Normal 400 request errors do not disable channels.",
+  logCleanupTitle: "Automatic log cleanup",
+  logCleanupDescription: "Set retention per log type. The background cleanup task deletes expired records on schedule.",
+  logRetentionAPIDays: "API access log retention days",
+  logRetentionLoginDays: "Login log retention days",
+  logRetentionAdminDays: "Admin change log retention days",
+  logRetentionSystemDays: "System log retention days",
+  logRetentionTokenDays: "Billing call log retention days",
+  logRetentionCleanupIntervalHours: "Cleanup interval (hours)",
+  logCleanupHint: "Set retention days to 0 to keep logs indefinitely. Billing call log cleanup affects call details and usage trend statistics.",
   statusUp: "Up",
   statusDown: "Down",
   statusPending: "Pending",
