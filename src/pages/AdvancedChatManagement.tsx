@@ -44,6 +44,9 @@ interface AdvancedChatSettings {
   assistant_connector_replace_text_enabled: boolean
   assistant_connector_run_command_enabled: boolean
   assistant_connector_web_search_enabled: boolean
+  scheduled_tasks_enabled: boolean
+  message_delivery_enabled: boolean
+  delivery_system_smtp_enabled: boolean
 }
 
 const defaultAdvancedChatSettings: AdvancedChatSettings = {
@@ -62,6 +65,9 @@ const defaultAdvancedChatSettings: AdvancedChatSettings = {
   assistant_connector_replace_text_enabled: true,
   assistant_connector_run_command_enabled: true,
   assistant_connector_web_search_enabled: true,
+  scheduled_tasks_enabled: true,
+  message_delivery_enabled: true,
+  delivery_system_smtp_enabled: true,
 }
 
 const emptyDraft: MCPDraft = {
@@ -156,6 +162,9 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
         assistant_connector_replace_text_enabled: form.assistant_connector_replace_text_enabled,
         assistant_connector_run_command_enabled: form.assistant_connector_run_command_enabled,
         assistant_connector_web_search_enabled: form.assistant_connector_web_search_enabled,
+        scheduled_tasks_enabled: form.scheduled_tasks_enabled,
+        message_delivery_enabled: form.message_delivery_enabled,
+        delivery_system_smtp_enabled: form.delivery_system_smtp_enabled,
       })
       return normalizeAdvancedChatSettings(res.data)
     },
@@ -340,6 +349,26 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
                   checked={form.assistant_mode_enabled}
                   onChange={(checked) => setForm((current) => ({ ...current, assistant_mode_enabled: checked }))}
                 />
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <ToggleRow
+                    title="启用计划任务"
+                    description="关闭后，用户不能创建、编辑或运行高级聊天计划任务，后台调度器也不会执行到期任务。"
+                    checked={form.scheduled_tasks_enabled}
+                    onChange={(checked) => setForm((current) => ({ ...current, scheduled_tasks_enabled: checked }))}
+                  />
+                  <ToggleRow
+                    title="启用消息投递"
+                    description="关闭后，计划任务仍可运行，但不会向 AI 暴露结果投递工具，也不能管理投递配置。"
+                    checked={form.message_delivery_enabled}
+                    onChange={(checked) => setForm((current) => ({ ...current, message_delivery_enabled: checked }))}
+                  />
+                  <ToggleRow
+                    title="允许使用系统 SMTP"
+                    description="开启后，邮箱投递可使用后台认证邮件的 SMTP；关闭后，用户必须在投递配置中填写自己的 SMTP。"
+                    checked={form.delivery_system_smtp_enabled}
+                    onChange={(checked) => setForm((current) => ({ ...current, delivery_system_smtp_enabled: checked }))}
+                  />
+                </div>
                 <div className="rounded-md border p-3">
                   <div className="text-sm font-medium">助理工具</div>
                   <div className="mt-1 text-xs text-muted-foreground">控制助理模式下模型可以调用的工具类型。关闭的工具不会出现在可用工具列表中。</div>
@@ -537,6 +566,9 @@ function normalizeAdvancedChatSettings(value: unknown): AdvancedChatSettings {
     assistant_connector_replace_text_enabled: item.assistant_connector_replace_text_enabled !== false,
     assistant_connector_run_command_enabled: item.assistant_connector_run_command_enabled !== false,
     assistant_connector_web_search_enabled: item.assistant_connector_web_search_enabled !== false,
+    scheduled_tasks_enabled: item.scheduled_tasks_enabled !== false,
+    message_delivery_enabled: item.message_delivery_enabled !== false,
+    delivery_system_smtp_enabled: item.delivery_system_smtp_enabled !== false,
   }
 }
 

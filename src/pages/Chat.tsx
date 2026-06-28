@@ -69,6 +69,9 @@ interface ChatSession {
   connector_command_prefixes: string[]
   model_name?: string
   user_channel_id?: number
+  max_tokens?: number
+  temperature?: number | null
+  reasoning_effort?: string
   created_at: string
   updated_at: string
 }
@@ -220,7 +223,7 @@ interface StoredFileContent {
 type ChatEndpoint = "chat" | "responses" | "claude" | "gemini"
 type ChatMode = "basic" | "advanced"
 type ChatRunMode = "chat" | "assistant"
-type SessionConfigTab = "basic" | "agent" | "skills" | "mcp" | "device"
+type SessionConfigTab = "basic" | "advanced" | "agent" | "skills" | "mcp" | "device"
 type AttachmentTarget = "composer" | "editor"
 type ComposerControlMenu = "" | "mode" | "device" | "workspace"
 
@@ -1233,6 +1236,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
               connector_workspace_path: session.connector_workspace_path || "",
               connector_auto_approve: session.connector_auto_approve,
               connector_command_prefixes: session.connector_command_prefixes,
+              max_tokens: session.max_tokens || 0,
+              temperature: session.temperature ?? null,
+              reasoning_effort: session.reasoning_effort || "",
               stream: false,
             })
             const serverSession = normalizeSession(res.data?.session)
@@ -1283,6 +1289,9 @@ export default function Chat({ variant = "basic" }: ChatProps) {
               connector_workspace_path: session.connector_workspace_path || "",
               connector_auto_approve: session.connector_auto_approve,
               connector_command_prefixes: session.connector_command_prefixes,
+              max_tokens: session.max_tokens || 0,
+              temperature: session.temperature ?? null,
+              reasoning_effort: session.reasoning_effort || "",
               stream: true,
             }),
             signal: controller.signal,
@@ -2235,9 +2244,10 @@ export default function Chat({ variant = "basic" }: ChatProps) {
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
                 {([
                   ["basic", copy.basicSettings],
+                  ["advanced", copy.advancedModelSettings],
                   ["agent", copy.agent],
                   ["skills", copy.skills],
                   ...(currentAdvancedSettings.assistant_mcp_tools_enabled ? ([["mcp", copy.mcpServers]] as const) : []),
@@ -2301,6 +2311,64 @@ export default function Chat({ variant = "basic" }: ChatProps) {
                         </option>
                       ))}
                     </select>
+                  </label>
+                </div>
+              )}
+
+              {configTab === "advanced" && (
+                <div className="space-y-4 rounded-md border p-3">
+                  <label className="space-y-1 text-sm">
+                    <span className="font-medium">{copy.temperature}</span>
+                    <input
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      type="number"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      value={currentSession?.temperature ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value === "" ? null : Number(event.target.value)
+                        if (currentSession) {
+                          updateSession(currentSession.id, (session) => ({ ...session, temperature: value }), { persist: true })
+                        }
+                      }}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-medium">{copy.reasoningEffort}</span>
+                    <select
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={currentSession?.reasoning_effort || ""}
+                      onChange={(event) => {
+                        if (currentSession) {
+                          updateSession(currentSession.id, (session) => ({ ...session, reasoning_effort: event.target.value }), { persist: true })
+                        }
+                      }}
+                    >
+                      <option value="">{copy.reasoningDefault}</option>
+                      <option value="minimal">{copy.reasoningMinimal}</option>
+                      <option value="low">{copy.reasoningLow}</option>
+                      <option value="medium">{copy.reasoningMedium}</option>
+                      <option value="high">{copy.reasoningHigh}</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="font-medium">{copy.maxTokens}</span>
+                    <input
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      type="number"
+                      min={0}
+                      max={200000}
+                      step={1}
+                      value={currentSession?.max_tokens || ""}
+                      placeholder={copy.maxTokensPlaceholder}
+                      onChange={(event) => {
+                        const value = Math.max(0, Number(event.target.value) || 0)
+                        if (currentSession) {
+                          updateSession(currentSession.id, (session) => ({ ...session, max_tokens: value }), { persist: true })
+                        }
+                      }}
+                    />
                   </label>
                 </div>
               )}
@@ -3360,6 +3428,9 @@ async function saveAdvancedSessionSnapshot(session: ChatSession): Promise<ChatSe
     connector_command_prefixes: session.connector_command_prefixes,
     model_name: session.model_name || "",
     user_channel_id: session.user_channel_id || 0,
+    max_tokens: session.max_tokens || 0,
+    temperature: session.temperature ?? null,
+    reasoning_effort: session.reasoning_effort || "",
     messages: session.messages.map((message) => ({
       id: message.id,
       role: message.role,
@@ -3845,6 +3916,9 @@ function normalizeSession(value: unknown): ChatSession | null {
     connector_command_prefixes: stringArrayFromUnknown(value.connector_command_prefixes),
     model_name: stringFromUnknown(value.model_name),
     user_channel_id: Number(value.user_channel_id || 0) || undefined,
+    max_tokens: Number(value.max_tokens || 0) || 0,
+    temperature: value.temperature === null || value.temperature === undefined ? null : Number(value.temperature),
+    reasoning_effort: stringFromUnknown(value.reasoning_effort) || "",
     created_at: typeof value.created_at === "string" ? value.created_at : new Date().toISOString(),
     updated_at: typeof value.updated_at === "string" ? value.updated_at : new Date().toISOString(),
   }
@@ -4037,6 +4111,9 @@ function createSession(input: { agentID?: string; modelName?: string } = {}): Ch
     connector_auto_approve: false,
     connector_command_prefixes: [],
     model_name: input.modelName || undefined,
+    max_tokens: 0,
+    temperature: null,
+    reasoning_effort: "",
     created_at: now,
     updated_at: now,
   }
@@ -4539,6 +4616,16 @@ const chatCopyKeys = {
   agentCreateFailed: "chat.agentCreateFailed",
   agentDeleteFailed: "chat.agentDeleteFailed",
   basicSettings: "chat.basicSettings",
+  advancedModelSettings: "chat.advancedModelSettings",
+  maxTokens: "chat.maxTokens",
+  maxTokensPlaceholder: "chat.maxTokensPlaceholder",
+  temperature: "chat.temperature",
+  reasoningEffort: "chat.reasoningEffort",
+  reasoningDefault: "chat.reasoningDefault",
+  reasoningMinimal: "chat.reasoningMinimal",
+  reasoningLow: "chat.reasoningLow",
+  reasoningMedium: "chat.reasoningMedium",
+  reasoningHigh: "chat.reasoningHigh",
   addedAgent: "chat.addedAgent",
   noAgentAdded: "chat.noAgentAdded",
   setAgent: "chat.setAgent",

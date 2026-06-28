@@ -1,4 +1,4 @@
-import { Bot, FileText, Laptop, Menu, MessageSquare, Palette, SlidersHorizontal, Sparkles, UserCircle, Video } from "lucide-react"
+import { Bot, CalendarClock, FileText, Laptop, Menu, MessageSquare, Palette, Send, SlidersHorizontal, Sparkles, UserCircle, Video } from "lucide-react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
@@ -11,6 +11,8 @@ import Images from "./Images"
 import Videos from "./Videos"
 import AdvancedChatDevices from "./AdvancedChatDevices"
 import MessageChannels from "./MessageChannelsWorkspace"
+import AdvancedChatDeliveries from "./AdvancedChatDeliveries"
+import AdvancedChatScheduledTasks from "./AdvancedChatScheduledTasks"
 import { LanguageSwitcher } from "@/components/LanguageSwitcher"
 import { ThemeSwitcher } from "@/components/ThemeSwitcher"
 import { Button } from "@/components/ui/button"
@@ -145,6 +147,8 @@ export default function AdvancedChat() {
                     <Route path="mcp" element={<AdvancedChatMCP />} />
                     <Route path="devices" element={<AdvancedChatDevices />} />
                     {publicSettings.message_channel_enabled && <Route path="channels/*" element={<MessageChannels />} />}
+                    <Route path="deliveries" element={<AdvancedChatDeliveries />} />
+                    <Route path="scheduled-tasks" element={<AdvancedChatScheduledTasks />} />
                     <Route path="images" element={<Images />} />
                     <Route path="videos" element={<Videos />} />
                     <Route path="files" element={<AdvancedChatFiles />} />
@@ -172,12 +176,16 @@ function AdvancedChatSidebar({ className, publicSettings, onNavigate }: { classN
   const { language, t } = useI18n()
   const filesLabel = language === "zh" ? "文件库" : "Files"
   const messageChannelsLabel = language === "zh" ? "消息通道" : "Message Channels"
+  const deliveriesLabel = language === "zh" ? "结果投递" : "Result Delivery"
+  const scheduledTasksLabel = language === "zh" ? "计划任务" : "Scheduled Tasks"
   const items = [
     { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" || location.pathname.startsWith("/chat/session/") },
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
     { href: "/chat/videos", label: t("nav.videos"), icon: Video, active: location.pathname === "/chat/videos" },
     { href: "/chat/files", label: filesLabel, icon: FileText, active: location.pathname === "/chat/files" },
     ...(publicSettings.message_channel_enabled ? [{ href: "/chat/channels", label: messageChannelsLabel, icon: MessageSquare, active: location.pathname.startsWith("/chat/channels") }] : []),
+    { href: "/chat/deliveries", label: deliveriesLabel, icon: Send, active: location.pathname === "/chat/deliveries" },
+    { href: "/chat/scheduled-tasks", label: scheduledTasksLabel, icon: CalendarClock, active: location.pathname === "/chat/scheduled-tasks" },
     { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
     { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },
     { href: "/chat/devices", label: t("nav.devices"), icon: Laptop, active: location.pathname === "/chat/devices" },
