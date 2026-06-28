@@ -50,7 +50,7 @@ interface GroupConfig {
 interface MessageChannel {
   id: number
   name: string
-  provider: "telegram" | "discord" | string
+  provider: ChannelProvider | string
   enabled: boolean
   bot_token_configured: boolean
   bot_token_preview?: string
@@ -71,7 +71,7 @@ interface MessageChannel {
 interface Draft {
   id?: number
   name: string
-  provider: "telegram" | "discord"
+  provider: ChannelProvider
   bot_token: string
   enabled: boolean
   default_device_id: string
@@ -104,6 +104,13 @@ const emptyDraft: Draft = {
 }
 
 const channelQueryKey = ["message-channels"] as const
+type ChannelProvider = "telegram" | "discord" | "qq" | "onebot"
+const providerOptions: Array<{ value: ChannelProvider; label: string }> = [
+  { value: "telegram", label: "Telegram" },
+  { value: "discord", label: "Discord" },
+  { value: "qq", label: "QQ 官方机器人" },
+  { value: "onebot", label: "OneBot" },
+]
 
 export default function MessageChannels() {
   const { language } = useI18n()
@@ -337,8 +344,7 @@ export default function MessageChannels() {
               </Field>
               <Field label={copy.provider}>
                 <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={draft.provider} onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value as Draft["provider"] }))}>
-                  <option value="telegram">Telegram</option>
-                  <option value="discord">Discord</option>
+                  {providerOptions.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
                 </select>
               </Field>
               <Field label={copy.botToken}>
@@ -542,7 +548,7 @@ function channelToDraft(channel: MessageChannel): Draft {
   return {
     id: channel.id,
     name: channel.name,
-    provider: channel.provider === "discord" ? "discord" : "telegram",
+    provider: normalizeProviderValue(channel.provider),
     bot_token: "",
     enabled: channel.enabled,
     default_device_id: channel.default_device_id || "",
@@ -581,6 +587,23 @@ function normalizeChannel(value: unknown): MessageChannel | null {
     system_prompt: stringValue(value.system_prompt),
     group_configs: Array.isArray(value.group_configs) ? value.group_configs.map(normalizeGroup).filter(Boolean) as GroupConfig[] : [],
     last_event_at: stringValue(value.last_event_at),
+  }
+}
+
+function normalizeProviderValue(value: unknown): ChannelProvider {
+  switch (stringValue(value).toLowerCase()) {
+    case "discord":
+      return "discord"
+    case "qq":
+    case "qq-official":
+    case "qq_official":
+      return "qq"
+    case "onebot":
+    case "one-bot":
+    case "one_bot":
+      return "onebot"
+    default:
+      return "telegram"
   }
 }
 

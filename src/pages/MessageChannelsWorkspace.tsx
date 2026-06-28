@@ -62,7 +62,7 @@ interface AdvancedOptions {
 interface MessageChannel {
   id: number
   name: string
-  provider: "telegram" | "discord" | string
+  provider: ChannelProvider | string
   enabled: boolean
   bot_token_configured: boolean
   bot_token_preview?: string
@@ -96,7 +96,7 @@ interface MessageRecord {
 interface Draft {
   id?: number
   name: string
-  provider: "telegram" | "discord"
+  provider: ChannelProvider
   bot_token: string
   enabled: boolean
   default_device_id: string
@@ -113,6 +113,13 @@ interface Draft {
 }
 
 const channelQueryKey = ["message-channels"] as const
+type ChannelProvider = "telegram" | "discord" | "qq" | "onebot"
+const providerOptions: Array<{ value: ChannelProvider; label: string }> = [
+  { value: "telegram", label: "Telegram" },
+  { value: "discord", label: "Discord" },
+  { value: "qq", label: "QQ 官方机器人" },
+  { value: "onebot", label: "OneBot" },
+]
 const emptyAdvancedOptions: AdvancedOptions = {
   temperature: null,
   max_tokens: 0,
@@ -339,7 +346,7 @@ function ChannelDetail({ copy, mode }: { copy: CopyText; mode: "create" | "edit"
       </div>
 
       {activeTab === "basic" && (
-        <BasicTab copy={copy} draft={draft} current={current} onDraftChange={updateDraft} />
+        <BasicTab copy={copy} draft={draft} current={current} onDraftChange={updateDraft} onAdvancedChange={updateAdvanced} />
       )}
       {activeTab === "routing" && (
         <RoutingTab copy={copy} draft={draft} lookups={lookups} modelOptions={modelOptions} defaultModelOptions={defaultModelOptions} onDraftChange={updateDraft} />
@@ -357,7 +364,19 @@ function ChannelDetail({ copy, mode }: { copy: CopyText; mode: "create" | "edit"
   )
 }
 
-function BasicTab({ copy, draft, current, onDraftChange }: { copy: CopyText; draft: Draft; current?: MessageChannel; onDraftChange: (patch: Partial<Draft>) => void }) {
+function BasicTab({
+  copy,
+  draft,
+  current,
+  onDraftChange,
+  onAdvancedChange,
+}: {
+  copy: CopyText
+  draft: Draft
+  current?: MessageChannel
+  onDraftChange: (patch: Partial<Draft>) => void
+  onAdvancedChange: (patch: Partial<AdvancedOptions>) => void
+}) {
   const { success } = useToast()
   const copyWebhook = async () => {
     if (!current?.webhook_path) {
@@ -376,12 +395,8 @@ function BasicTab({ copy, draft, current, onDraftChange }: { copy: CopyText; dra
             <Input value={draft.name} onChange={(event) => onDraftChange({ name: event.target.value })} />
           </Field>
           <SelectField label={copy.provider} value={draft.provider} onChange={(provider) => onDraftChange({ provider: provider as Draft["provider"] })}>
-            <option value="telegram">Telegram</option>
-            <option value="discord">Discord</option>
+            {providerOptions.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
           </SelectField>
-          <Field label={copy.botToken}>
-            <Input type="password" value={draft.bot_token} placeholder={current?.bot_token_preview || copy.botTokenPlaceholder} onChange={(event) => onDraftChange({ bot_token: event.target.value })} />
-          </Field>
           <Field label={copy.status}>
             <label className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm">
               <input type="checkbox" checked={draft.enabled} onChange={(event) => onDraftChange({ enabled: event.target.checked })} />
@@ -399,8 +414,101 @@ function BasicTab({ copy, draft, current, onDraftChange }: { copy: CopyText; dra
             </Button>
           </div>
         )}
+        <ConnectionSettings copy={copy} draft={draft} current={current} onDraftChange={onDraftChange} onAdvancedChange={onAdvancedChange} />
       </CardContent>
     </Card>
+  )
+}
+
+function ConnectionSettings({
+  copy,
+  draft,
+  current,
+  onDraftChange,
+  onAdvancedChange,
+}: {
+  copy: CopyText
+  draft: Draft
+  current?: MessageChannel
+  onDraftChange: (patch: Partial<Draft>) => void
+  onAdvancedChange: (patch: Partial<AdvancedOptions>) => void
+}) {
+  const config = parseProviderConfig(draft.advanced_options.custom_provider_config_json)
+  const updateConfig = (key: string, value: string) => {
+    const next = { ...config }
+    if (value.trim() === "") {
+      delete next[key]
+    } else {
+      next[key] = value
+    }
+    onAdvancedChange({ custom_provider_config_json: stringifyProviderConfig(next) })
+  }
+
+  return (
+    <div className="space-y-5 border-t pt-5">
+      <div>
+        <h2 className="text-sm font-semibold">{copy.tabConnection}</h2>
+      </div>
+        {draft.provider === "telegram" && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={copy.telegramBotToken}>
+              <Input type="password" value={draft.bot_token} placeholder={current?.bot_token_preview || copy.botTokenPlaceholder} onChange={(event) => onDraftChange({ bot_token: event.target.value })} />
+            </Field>
+            <Field label={copy.telegramBaseURL}>
+              <Input value={config.base_url || ""} placeholder="https://api.telegram.org" onChange={(event) => updateConfig("base_url", event.target.value)} />
+            </Field>
+            <SelectField label={copy.telegramParseMode} value={config.parse_mode || ""} onChange={(value) => updateConfig("parse_mode", value)}>
+              <option value="">{copy.inheritNone}</option>
+              <option value="MarkdownV2">MarkdownV2</option>
+              <option value="HTML">HTML</option>
+              <option value="Markdown">Markdown</option>
+            </SelectField>
+          </div>
+        )}
+
+        {draft.provider === "discord" && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={copy.discordBotToken}>
+              <Input type="password" value={draft.bot_token} placeholder={current?.bot_token_preview || copy.botTokenPlaceholder} onChange={(event) => onDraftChange({ bot_token: event.target.value })} />
+            </Field>
+            <Field label={copy.discordBaseURL}>
+              <Input value={config.base_url || ""} placeholder="https://discord.com/api/v10" onChange={(event) => updateConfig("base_url", event.target.value)} />
+            </Field>
+          </div>
+        )}
+
+        {draft.provider === "qq" && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={copy.qqBaseURL}>
+              <Input value={config.base_url || ""} placeholder="https://api.sgroup.qq.com" onChange={(event) => updateConfig("base_url", event.target.value)} />
+            </Field>
+            <Field label={copy.qqAuthorization}>
+              <Input value={config.authorization || ""} placeholder="QQBot xxxxx" onChange={(event) => updateConfig("authorization", event.target.value)} />
+            </Field>
+            <Field label={copy.qqMsgType}>
+              <Input value={config.msg_type || ""} placeholder="0" onChange={(event) => updateConfig("msg_type", event.target.value)} />
+            </Field>
+          </div>
+        )}
+
+        {draft.provider === "onebot" && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label={copy.oneBotBaseURL}>
+              <Input value={config.base_url || ""} placeholder="http://127.0.0.1:3000" onChange={(event) => updateConfig("base_url", event.target.value)} />
+            </Field>
+            <Field label={copy.oneBotAccessToken}>
+              <Input type="password" value={config.access_token || ""} onChange={(event) => updateConfig("access_token", event.target.value)} />
+            </Field>
+            <Field label={copy.oneBotAction}>
+              <Input value={config.send_action || ""} placeholder="send_group_msg / send_private_msg" onChange={(event) => updateConfig("send_action", event.target.value)} />
+            </Field>
+          </div>
+        )}
+
+        <div className="rounded-md border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+          {copy.connectionHint}
+        </div>
+    </div>
   )
 }
 
@@ -735,7 +843,7 @@ function channelToDraft(channel: MessageChannel): Draft {
   return {
     id: channel.id,
     name: channel.name,
-    provider: channel.provider === "discord" ? "discord" : "telegram",
+    provider: normalizeProviderValue(channel.provider),
     bot_token: "",
     enabled: channel.enabled,
     default_device_id: channel.default_device_id || "",
@@ -776,6 +884,23 @@ function normalizeChannel(value: unknown): MessageChannel | null {
     last_event_at: stringValue(value.last_event_at),
     created_at: stringValue(value.created_at),
     updated_at: stringValue(value.updated_at),
+  }
+}
+
+function normalizeProviderValue(value: unknown): ChannelProvider {
+  switch (stringValue(value).toLowerCase()) {
+    case "discord":
+      return "discord"
+    case "qq":
+    case "qq-official":
+    case "qq_official":
+      return "qq"
+    case "onebot":
+    case "one-bot":
+    case "one_bot":
+      return "onebot"
+    default:
+      return "telegram"
   }
 }
 
@@ -877,6 +1002,26 @@ function formatDateTime(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
+function parseProviderConfig(raw: string): Record<string, string> {
+  if (!raw.trim()) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!isRecord(parsed)) {
+      return {}
+    }
+    return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, typeof value === "string" ? value : String(value ?? "")]))
+  } catch {
+    return {}
+  }
+}
+
+function stringifyProviderConfig(config: Record<string, string>) {
+  const cleaned = Object.fromEntries(Object.entries(config).filter(([, value]) => value.trim() !== ""))
+  return Object.keys(cleaned).length ? JSON.stringify(cleaned, null, 2) : ""
+}
+
 function apiErrorMessage(err: unknown, fallback: string) {
   if (isRecord(err) && isRecord(err.response) && isRecord(err.response.data) && typeof err.response.data.error === "string") {
     return err.response.data.error
@@ -898,6 +1043,7 @@ const zhCopy = {
   groups: "群配置",
   lastEvent: "最近事件",
   tabBasic: "基础",
+  tabConnection: "连接设置",
   tabRouting: "默认路由",
   tabGroups: "群配置",
   tabAdvanced: "高级",
@@ -905,6 +1051,8 @@ const zhCopy = {
   name: "名称",
   provider: "渠道",
   botToken: "Bot Token",
+  telegramBotToken: "Telegram bot token",
+  discordBotToken: "Discord bot token",
   botTokenPlaceholder: "输入机器人 token",
   status: "状态",
   webhook: "Webhook",
@@ -954,6 +1102,16 @@ const zhCopy = {
   responseTimeout: "回复超时（秒）",
   errorFallback: "错误兜底回复",
   providerJSON: "渠道扩展 JSON",
+  telegramBaseURL: "Telegram Bot API 地址",
+  telegramParseMode: "Telegram 解析模式",
+  discordBaseURL: "Discord API 地址",
+  qqBaseURL: "QQ 官方 API 地址",
+  qqAuthorization: "QQ Authorization",
+  qqMsgType: "QQ 消息类型",
+  oneBotBaseURL: "OneBot HTTP 地址",
+  oneBotAccessToken: "OneBot Access Token",
+  oneBotAction: "OneBot 发送 action",
+  connectionHint: "这些连接设置会自动保存到渠道扩展配置中，并由对应渠道发送消息时读取。",
   noMessages: "暂无消息记录。",
   save: "保存",
   saving: "保存中...",
@@ -980,6 +1138,7 @@ const enCopy: CopyText = {
   groups: "Group configs",
   lastEvent: "Last event",
   tabBasic: "Basic",
+  tabConnection: "Connection",
   tabRouting: "Default Routing",
   tabGroups: "Groups",
   tabAdvanced: "Advanced",
@@ -987,6 +1146,8 @@ const enCopy: CopyText = {
   name: "Name",
   provider: "Provider",
   botToken: "Bot Token",
+  telegramBotToken: "Telegram bot token",
+  discordBotToken: "Discord bot token",
   botTokenPlaceholder: "Enter bot token",
   status: "Status",
   webhook: "Webhook",
@@ -1036,6 +1197,16 @@ const enCopy: CopyText = {
   responseTimeout: "Response timeout (seconds)",
   errorFallback: "Error fallback reply",
   providerJSON: "Provider extension JSON",
+  telegramBaseURL: "Telegram Bot API URL",
+  telegramParseMode: "Telegram parse mode",
+  discordBaseURL: "Discord API URL",
+  qqBaseURL: "QQ Official API URL",
+  qqAuthorization: "QQ Authorization",
+  qqMsgType: "QQ message type",
+  oneBotBaseURL: "OneBot HTTP URL",
+  oneBotAccessToken: "OneBot access token",
+  oneBotAction: "OneBot send action",
+  connectionHint: "These connection settings are saved into the provider extension config and used by the selected provider when sending messages.",
   noMessages: "No messages yet.",
   save: "Save",
   saving: "Saving...",
