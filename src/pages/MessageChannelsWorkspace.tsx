@@ -33,6 +33,10 @@ interface GroupConfig {
   name: string
   enabled: boolean
   device_id: string
+  workspace_path: string
+  workspace_unrestricted: boolean
+  connector_auto_approve: boolean
+  connector_command_prefixes: string[]
   user_channel_id?: number | null
   model: string
   agent_id?: number | null
@@ -68,6 +72,10 @@ interface MessageChannel {
   bot_token_preview?: string
   webhook_path: string
   default_device_id: string
+  default_workspace_path: string
+  default_workspace_unrestricted: boolean
+  default_connector_auto_approve: boolean
+  default_connector_command_prefixes: string[]
   default_user_channel_id?: number | null
   default_model: string
   default_agent_id?: number | null
@@ -100,6 +108,10 @@ interface Draft {
   bot_token: string
   enabled: boolean
   default_device_id: string
+  default_workspace_path: string
+  default_workspace_unrestricted: boolean
+  default_connector_auto_approve: boolean
+  default_connector_command_prefixes: string
   default_user_channel_id: string
   default_model: string
   default_agent_id: string
@@ -142,6 +154,10 @@ const emptyDraft: Draft = {
   bot_token: "",
   enabled: true,
   default_device_id: "",
+  default_workspace_path: "",
+  default_workspace_unrestricted: false,
+  default_connector_auto_approve: false,
+  default_connector_command_prefixes: "",
   default_user_channel_id: "",
   default_model: "",
   default_agent_id: "",
@@ -592,6 +608,20 @@ function RoutingTab({
             <option value="">{copy.inheritNone}</option>
             {lookups.devices.map((device) => <option key={device.id} value={device.id}>{device.name}{device.online ? "" : ` (${copy.offline})`}</option>)}
           </SelectField>
+          <Field label={copy.workspacePath}>
+            <Input disabled={draft.default_workspace_unrestricted} value={draft.default_workspace_path} placeholder={draft.default_workspace_unrestricted ? copy.unrestrictedWorkspace : copy.workspacePathPlaceholder} onChange={(event) => onDraftChange({ default_workspace_path: event.target.value })} />
+          </Field>
+          <label className="flex h-10 items-center gap-2 self-end rounded-md border px-3 text-sm">
+            <input type="checkbox" checked={draft.default_workspace_unrestricted} onChange={(event) => onDraftChange({ default_workspace_unrestricted: event.target.checked, default_workspace_path: event.target.checked ? "" : draft.default_workspace_path })} />
+            {copy.unrestrictedWorkspace}
+          </label>
+          <label className="flex h-10 items-center gap-2 self-end rounded-md border px-3 text-sm">
+            <input type="checkbox" checked={draft.default_connector_auto_approve} onChange={(event) => onDraftChange({ default_connector_auto_approve: event.target.checked })} />
+            {copy.connectorAutoApprove}
+          </label>
+          <Field label={copy.commandPrefixes}>
+            <Input value={draft.default_connector_command_prefixes} placeholder="go test,npm run build" onChange={(event) => onDraftChange({ default_connector_command_prefixes: event.target.value })} />
+          </Field>
           <SelectField label={copy.userChannel} value={draft.default_user_channel_id} onChange={(value) => onDraftChange({ default_user_channel_id: value, default_model: "" })}>
             <option value="">{copy.inheritNone}</option>
             {lookups.catalog.map((channel) => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
@@ -639,6 +669,10 @@ function GroupsTab({ copy, draft, lookups, modelOptions, onDraftChange }: { copy
         name: "",
         enabled: true,
         device_id: "",
+        workspace_path: draft.default_workspace_path,
+        workspace_unrestricted: draft.default_workspace_unrestricted,
+        connector_auto_approve: draft.default_connector_auto_approve,
+        connector_command_prefixes: commandPrefixesFromText(draft.default_connector_command_prefixes),
         user_channel_id: null,
         model: "",
         agent_id: null,
@@ -682,6 +716,16 @@ function GroupsTab({ copy, draft, lookups, modelOptions, onDraftChange }: { copy
                     <option value="">{copy.inheritDefault}</option>
                     {lookups.devices.map((device) => <option key={device.id} value={device.id}>{device.name}</option>)}
                   </SelectField>
+                  <Field label={copy.workspacePath}><Input disabled={group.workspace_unrestricted} value={group.workspace_path} placeholder={group.workspace_unrestricted ? copy.unrestrictedWorkspace : copy.workspacePathPlaceholder} onChange={(event) => updateGroup(index, { workspace_path: event.target.value })} /></Field>
+                  <label className="flex h-10 items-center gap-2 self-end rounded-md border px-3 text-sm">
+                    <input type="checkbox" checked={group.workspace_unrestricted} onChange={(event) => updateGroup(index, { workspace_unrestricted: event.target.checked, workspace_path: event.target.checked ? "" : group.workspace_path })} />
+                    {copy.unrestrictedWorkspace}
+                  </label>
+                  <label className="flex h-10 items-center gap-2 self-end rounded-md border px-3 text-sm">
+                    <input type="checkbox" checked={group.connector_auto_approve} onChange={(event) => updateGroup(index, { connector_auto_approve: event.target.checked })} />
+                    {copy.connectorAutoApprove}
+                  </label>
+                  <Field label={copy.commandPrefixes}><Input value={group.connector_command_prefixes.join(",")} placeholder="go test,npm run build" onChange={(event) => updateGroup(index, { connector_command_prefixes: commandPrefixesFromText(event.target.value) })} /></Field>
                   <SelectField label={copy.userChannel} value={group.user_channel_id ? String(group.user_channel_id) : ""} onChange={(value) => updateGroup(index, { user_channel_id: value ? Number(value) : null })}>
                     <option value="">{copy.inheritDefault}</option>
                     {lookups.catalog.map((channel) => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
@@ -905,6 +949,10 @@ function draftToPayload(draft: Draft) {
     bot_token: providerUsesBotToken(draft.provider) ? draft.bot_token.trim() || undefined : undefined,
     enabled: draft.enabled,
     default_device_id: draft.default_device_id,
+    default_workspace_path: draft.default_workspace_path.trim(),
+    default_workspace_unrestricted: draft.default_workspace_unrestricted,
+    default_connector_auto_approve: draft.default_connector_auto_approve,
+    default_connector_command_prefixes: commandPrefixesFromText(draft.default_connector_command_prefixes),
     default_user_channel_id: draft.default_user_channel_id ? Number(draft.default_user_channel_id) : null,
     default_model: draft.default_model,
     default_agent_id: draft.default_agent_id ? Number(draft.default_agent_id) : null,
@@ -957,6 +1005,10 @@ function channelToDraft(channel: MessageChannel): Draft {
     bot_token: "",
     enabled: channel.enabled,
     default_device_id: channel.default_device_id || "",
+    default_workspace_path: channel.default_workspace_path || "",
+    default_workspace_unrestricted: channel.default_workspace_unrestricted === true,
+    default_connector_auto_approve: channel.default_connector_auto_approve === true,
+    default_connector_command_prefixes: (channel.default_connector_command_prefixes || []).join(", "),
     default_user_channel_id: channel.default_user_channel_id ? String(channel.default_user_channel_id) : "",
     default_model: channel.default_model || "",
     default_agent_id: channel.default_agent_id ? String(channel.default_agent_id) : "",
@@ -981,6 +1033,10 @@ function normalizeChannel(value: unknown): MessageChannel | null {
     bot_token_preview: stringValue(value.bot_token_preview),
     webhook_path: stringValue(value.webhook_path),
     default_device_id: stringValue(value.default_device_id),
+    default_workspace_path: stringValue(value.default_workspace_path),
+    default_workspace_unrestricted: value.default_workspace_unrestricted === true,
+    default_connector_auto_approve: value.default_connector_auto_approve === true,
+    default_connector_command_prefixes: stringArray(value.default_connector_command_prefixes),
     default_user_channel_id: nullableNumber(value.default_user_channel_id),
     default_model: stringValue(value.default_model),
     default_agent_id: nullableNumber(value.default_agent_id),
@@ -1041,6 +1097,10 @@ function normalizeGroup(value: unknown): GroupConfig | null {
     name: stringValue(value.name),
     enabled: value.enabled !== false,
     device_id: stringValue(value.device_id),
+    workspace_path: stringValue(value.workspace_path),
+    workspace_unrestricted: value.workspace_unrestricted === true,
+    connector_auto_approve: value.connector_auto_approve === true,
+    connector_command_prefixes: stringArray(value.connector_command_prefixes),
     user_channel_id: nullableNumber(value.user_channel_id),
     model: stringValue(value.model),
     agent_id: nullableNumber(value.agent_id),
@@ -1096,6 +1156,14 @@ function nullableNumber(value: unknown) {
 
 function numberArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item > 0) : []
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => stringValue(item).trim()).filter(Boolean) : []
+}
+
+function commandPrefixesFromText(value: string) {
+  return value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean)
 }
 
 function stringValue(value: unknown) {
@@ -1169,6 +1237,11 @@ const zhCopy = {
   copy: "复制",
   copied: "已复制",
   device: "设备开发环境",
+  workspacePath: "工作目录",
+  workspacePathPlaceholder: "例如 D:\\dev\\project",
+  unrestrictedWorkspace: "不限工作目录",
+  connectorAutoApprove: "自动批准写入/编辑",
+  commandPrefixes: "自动批准命令前缀",
   userChannel: "用户渠道",
   model: "模型",
   agent: "智能体",
@@ -1284,6 +1357,11 @@ const enCopy: CopyText = {
   copy: "Copy",
   copied: "Copied",
   device: "Device environment",
+  workspacePath: "Workspace path",
+  workspacePathPlaceholder: "For example D:\\dev\\project",
+  unrestrictedWorkspace: "Unrestricted workspace",
+  connectorAutoApprove: "Auto-approve writes/edits",
+  commandPrefixes: "Auto-approved command prefixes",
   userChannel: "User channel",
   model: "Model",
   agent: "Agent",

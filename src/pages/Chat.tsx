@@ -2851,9 +2851,11 @@ function ToolCallDetails({
   const content = stringArgument(toolCall.arguments, "content")
   const command = stringArgument(toolCall.arguments, "command")
   const query = stringArgument(toolCall.arguments, "query")
+  const url = stringArgument(toolCall.arguments, "url")
   const replacements = replacementEntriesFromArguments(toolCall.arguments)
+  const toolTarget = builtinKind === "search" ? query : builtinKind === "fetch" ? url : command
   const title = builtinKind
-    ? builtinToolTitle(builtinKind, path, builtinKind === "search" ? query : command, copy, booleanArgument(toolCall.arguments, "preview_old_content_available"))
+    ? builtinToolTitle(builtinKind, path, toolTarget, copy, booleanArgument(toolCall.arguments, "preview_old_content_available"))
     : toolLabel(toolCall)
 
   useEffect(() => {
@@ -2909,7 +2911,7 @@ function ToolCallDetails({
         </div>
       ) : builtinKind === "replace" ? (
         <ReplacementDiffList entries={replacements} copy={copy} />
-      ) : builtinKind === "command" || builtinKind === "search" ? (
+      ) : builtinKind === "command" || builtinKind === "search" || builtinKind === "fetch" ? (
         <ToolResultBlock result={toolCall.result} copy={copy} />
       ) : (
         <>
@@ -4461,12 +4463,14 @@ function connectorActionForToolCall(toolCall: ChatToolCall) {
       return "run_command"
     case "search":
       return "web_search"
+    case "fetch":
+      return "web_fetch"
     default:
       return ""
   }
 }
 
-function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "replace" | "command" | "search" | "" {
+function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "replace" | "command" | "search" | "fetch" | "" {
   const name = toolCall.name.toLowerCase()
   if (!name.startsWith("workspace_")) {
     return ""
@@ -4489,17 +4493,20 @@ function builtinToolKind(toolCall: ChatToolCall): "list" | "read" | "write" | "r
   if (name.includes("workspace_web_search")) {
     return "search"
   }
+  if (name.includes("workspace_web_fetch")) {
+    return "fetch"
+  }
   return ""
 }
 
 function builtinToolTitle(
-  kind: "list" | "read" | "write" | "replace" | "command" | "search",
+  kind: "list" | "read" | "write" | "replace" | "command" | "search" | "fetch",
   path: string,
   command: string,
   copy: ChatCopy,
   writeModifiesExisting: boolean
 ) {
-  const target = kind === "command" ? command || "." : kind === "search" ? path || command || "." : path || "."
+  const target = kind === "command" || kind === "search" || kind === "fetch" ? command || "." : path || "."
   const template = kind === "list"
     ? copy.toolActionListFiles
     : kind === "read"
@@ -4508,6 +4515,8 @@ function builtinToolTitle(
         ? copy.toolActionRunCommand
         : kind === "search"
           ? copy.toolActionWebSearch
+          : kind === "fetch"
+            ? copy.toolActionWebFetch
           : kind === "write"
             ? writeModifiesExisting ? copy.toolActionEditFile : copy.toolActionWriteFile
             : copy.toolActionEditFile
@@ -4741,6 +4750,7 @@ const chatCopyKeys = {
   toolActionReadFile: "chat.toolActionReadFile",
   toolActionRunCommand: "chat.toolActionRunCommand",
   toolActionWebSearch: "chat.toolActionWebSearch",
+  toolActionWebFetch: "chat.toolActionWebFetch",
   toolActionWriteFile: "chat.toolActionWriteFile",
   toolActionEditFile: "chat.toolActionEditFile",
   jumpToLatest: "chat.jumpToLatest",

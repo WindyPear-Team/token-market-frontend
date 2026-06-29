@@ -411,7 +411,7 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
                     />
                     <ToggleRow
                       title="Web Search"
-                      description="Allow assistant connector web search requests. Search tasks are read-only and do not require approval."
+                      description="Allow assistant connector web search and web fetch requests. Network tasks are read-only and do not require approval."
                       checked={form.assistant_connector_web_search_enabled}
                       onChange={(checked) => setForm((current) => ({ ...current, assistant_connector_web_search_enabled: checked }))}
                     />
