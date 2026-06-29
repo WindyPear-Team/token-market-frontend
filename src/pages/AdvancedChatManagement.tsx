@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bot, Pencil, Plus, Save, Trash2 } from "lucide-react"
-import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -78,7 +77,6 @@ const emptyDraft: MCPDraft = {
 }
 
 export default function AdvancedChatManagement({ mode = "attachments" }: { mode?: "attachments" | "assistant" | "mcp" }) {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { success, error } = useToast()
   const [form, setForm] = useState<AdvancedChatSettings>(defaultAdvancedChatSettings)
@@ -99,7 +97,6 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
 
   const advancedSettings = useQuery<AdvancedChatSettings>({
     queryKey: ["advanced-chat-admin-settings"],
-    enabled: isPremium,
     queryFn: async () => {
       const res = await api.get("/advanced-chat/settings")
       return normalizeAdvancedChatSettings(res.data)
@@ -107,33 +104,29 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
   })
 
   useEffect(() => {
-    if (publicSettings && !isPremium) {
-      setIsBlockedOpen(true)
-    }
-  }, [isPremium, publicSettings])
-
-  useEffect(() => {
     if (!advancedSettings.data) {
       return
     }
-    setForm(advancedSettings.data)
-    setTypesText(advancedSettings.data.attachment_allowed_types.join("\n"))
-  }, [advancedSettings.data])
+    const next = normalizeAdvancedChatSettingsForEdition(advancedSettings.data, isPremium)
+    setForm(next)
+    setTypesText(next.attachment_allowed_types.join("\n"))
+  }, [advancedSettings.data, isPremium])
 
   const allowedTypes = useMemo(() => parseAllowedTypes(typesText), [typesText])
 
   const saveAttachmentSettings = useMutation({
     mutationFn: async () => {
-      if (!isPremium) {
-        throw new Error("Advanced chat requires premium edition")
-      }
       const res = await api.put("/advanced-chat/settings", {
         attachment_max_mb: Number(form.attachment_max_mb) || 10,
         attachment_allowed_types: allowedTypes,
-        file_storage_enabled: form.file_storage_enabled,
         file_storage_total_mb: Number(form.file_storage_total_mb) || 100,
-        file_storage_auto_save_images_enabled: form.file_storage_auto_save_images_enabled,
-        file_storage_auto_save_videos_enabled: form.file_storage_auto_save_videos_enabled,
+        ...(isPremium
+          ? {
+              file_storage_enabled: form.file_storage_enabled,
+              file_storage_auto_save_images_enabled: form.file_storage_auto_save_images_enabled,
+              file_storage_auto_save_videos_enabled: form.file_storage_auto_save_videos_enabled,
+            }
+          : {}),
       })
       return normalizeAdvancedChatSettings(res.data)
     },
@@ -150,9 +143,6 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
 
   const saveAssistantSettings = useMutation({
     mutationFn: async () => {
-      if (!isPremium) {
-        throw new Error("Advanced chat requires premium edition")
-      }
       const res = await api.put("/advanced-chat/settings", {
         assistant_mode_enabled: form.assistant_mode_enabled,
         assistant_mcp_tools_enabled: form.assistant_mcp_tools_enabled,
@@ -162,9 +152,13 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
         assistant_connector_replace_text_enabled: form.assistant_connector_replace_text_enabled,
         assistant_connector_run_command_enabled: form.assistant_connector_run_command_enabled,
         assistant_connector_web_search_enabled: form.assistant_connector_web_search_enabled,
-        scheduled_tasks_enabled: form.scheduled_tasks_enabled,
-        message_delivery_enabled: form.message_delivery_enabled,
-        delivery_system_smtp_enabled: form.delivery_system_smtp_enabled,
+        ...(isPremium
+          ? {
+              scheduled_tasks_enabled: form.scheduled_tasks_enabled,
+              message_delivery_enabled: form.message_delivery_enabled,
+              delivery_system_smtp_enabled: form.delivery_system_smtp_enabled,
+            }
+          : {}),
       })
       return normalizeAdvancedChatSettings(res.data)
     },
@@ -180,9 +174,6 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
 
   const saveMCPServers = useMutation({
     mutationFn: async (input: { servers: MCPServer[]; message: string; closeDialog?: boolean }) => {
-      if (!isPremium) {
-        throw new Error("Advanced chat requires premium edition")
-      }
       const res = await api.put("/advanced-chat/settings", {
         builtin_mcp_servers: input.servers.map((server) => ({
           ...server,
@@ -250,7 +241,17 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
     })
   }
 
-  const leaveBlockedPage = () => navigate("/dashboard", { replace: true })
+  const requirePremium = () => setIsBlockedOpen(true)
+  const updatePremiumToggle =
+    (key: "file_storage_enabled" | "file_storage_auto_save_images_enabled" | "file_storage_auto_save_videos_enabled" | "scheduled_tasks_enabled" | "message_delivery_enabled" | "delivery_system_smtp_enabled") =>
+    (checked: boolean) => {
+      if (checked && !isPremium) {
+        setForm((current) => ({ ...current, [key]: false }))
+        requirePremium()
+        return
+      }
+      setForm((current) => ({ ...current, [key]: checked }))
+    }
 
   return (
     <div className="space-y-6">
@@ -261,8 +262,7 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
         </div>
       </div>
 
-      {isPremium && (
-        <>
+      <>
           {mode === "attachments" && (
             <Card>
               <CardHeader>
@@ -311,20 +311,20 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
                   <ToggleRow
                     title="启用文件存储"
                     description="关闭后，独立高级聊天文件库、上传附件和选择已有文件都会被禁用。"
-                    checked={form.file_storage_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, file_storage_enabled: checked }))}
+                    checked={isPremium && form.file_storage_enabled}
+                    onChange={updatePremiumToggle("file_storage_enabled")}
                   />
                   <ToggleRow
                     title="图片生成自动入库"
                     description="开启后，图片生成或编辑返回的图片会在用户剩余空间足够时保存到文件库。"
-                    checked={form.file_storage_auto_save_images_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, file_storage_auto_save_images_enabled: checked }))}
+                    checked={isPremium && form.file_storage_auto_save_images_enabled}
+                    onChange={updatePremiumToggle("file_storage_auto_save_images_enabled")}
                   />
                   <ToggleRow
                     title="视频生成自动入库"
                     description="开启后，视频生成完成并返回视频时会在用户剩余空间足够时保存到文件库。"
-                    checked={form.file_storage_auto_save_videos_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, file_storage_auto_save_videos_enabled: checked }))}
+                    checked={isPremium && form.file_storage_auto_save_videos_enabled}
+                    onChange={updatePremiumToggle("file_storage_auto_save_videos_enabled")}
                   />
                 </div>
               </CardContent>
@@ -353,20 +353,20 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
                   <ToggleRow
                     title="启用计划任务"
                     description="关闭后，用户不能创建、编辑或运行高级聊天计划任务，后台调度器也不会执行到期任务。"
-                    checked={form.scheduled_tasks_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, scheduled_tasks_enabled: checked }))}
+                    checked={isPremium && form.scheduled_tasks_enabled}
+                    onChange={updatePremiumToggle("scheduled_tasks_enabled")}
                   />
                   <ToggleRow
                     title="启用消息投递"
                     description="关闭后，计划任务仍可运行，但不会向 AI 暴露结果投递工具，也不能管理投递配置。"
-                    checked={form.message_delivery_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, message_delivery_enabled: checked }))}
+                    checked={isPremium && form.message_delivery_enabled}
+                    onChange={updatePremiumToggle("message_delivery_enabled")}
                   />
                   <ToggleRow
                     title="允许使用系统 SMTP"
                     description="开启后，邮箱投递可使用后台认证邮件的 SMTP；关闭后，用户必须在投递配置中填写自己的 SMTP。"
-                    checked={form.delivery_system_smtp_enabled}
-                    onChange={(checked) => setForm((current) => ({ ...current, delivery_system_smtp_enabled: checked }))}
+                    checked={isPremium && form.delivery_system_smtp_enabled}
+                    onChange={updatePremiumToggle("delivery_system_smtp_enabled")}
                   />
                 </div>
                 <div className="rounded-md border p-3">
@@ -462,7 +462,6 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
             </Card>
           )}
         </>
-      )}
 
       <Dialog open={isServerDialogOpen} onOpenChange={setIsServerDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -504,14 +503,14 @@ export default function AdvancedChatManagement({ mode = "attachments" }: { mode?
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isBlockedOpen} onOpenChange={(open) => (!open ? leaveBlockedPage() : setIsBlockedOpen(open))}>
+      <Dialog open={isBlockedOpen} onOpenChange={setIsBlockedOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>需要高级版</DialogTitle>
           </DialogHeader>
           <div className="text-sm text-muted-foreground">高级聊天管理属于高级版功能，当前版本不可用。</div>
           <DialogFooter>
-            <Button onClick={leaveBlockedPage}>知道了</Button>
+            <Button onClick={() => setIsBlockedOpen(false)}>知道了</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -569,6 +568,21 @@ function normalizeAdvancedChatSettings(value: unknown): AdvancedChatSettings {
     scheduled_tasks_enabled: item.scheduled_tasks_enabled !== false,
     message_delivery_enabled: item.message_delivery_enabled !== false,
     delivery_system_smtp_enabled: item.delivery_system_smtp_enabled !== false,
+  }
+}
+
+function normalizeAdvancedChatSettingsForEdition(settings: AdvancedChatSettings, isPremium: boolean): AdvancedChatSettings {
+  if (isPremium) {
+    return settings
+  }
+  return {
+    ...settings,
+    file_storage_enabled: false,
+    file_storage_auto_save_images_enabled: false,
+    file_storage_auto_save_videos_enabled: false,
+    scheduled_tasks_enabled: false,
+    message_delivery_enabled: false,
+    delivery_system_smtp_enabled: false,
   }
 }
 

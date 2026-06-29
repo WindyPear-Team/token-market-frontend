@@ -954,14 +954,14 @@ function QuickLinksWidget() {
       return res.data
     },
   })
-  const publicSettings = withPublicSettingsDefaults(settings)
   const title = language === "zh" ? "快捷入口" : "Quick links"
+  void settings
   const actions = [
-    { label: t("nav.chat"), href: chatPathForSettings(publicSettings), icon: MessageSquare },
+    { label: t("nav.chat"), href: chatPathForSettings(), icon: MessageSquare },
     { label: t("settings.apiKeys"), href: "/dashboard/api-keys", icon: KeyRound },
     { label: t("nav.wallet"), href: "/dashboard/wallet", icon: WalletCards },
     { label: t("nav.details"), href: "/dashboard/logs", icon: Database },
-    { label: t("nav.images"), href: imagePathForSettings(publicSettings), icon: Activity },
+    { label: t("nav.images"), href: imagePathForSettings(), icon: Activity },
   ]
 
   return (

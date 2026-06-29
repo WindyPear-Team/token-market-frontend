@@ -295,7 +295,7 @@ const systemSectionTabs: Record<SystemSection, SystemTab[]> = {
   redeemCodes: ["redeemCodes"],
 }
 
-const premiumOnlySystemTabs: SystemTab[] = ["metaModels", "advancedChatAssistant", "advancedChatAttachments", "advancedChatMCP", "subscriptionPlans", "redeemCodes"]
+const premiumOnlySystemTabs: SystemTab[] = ["metaModels", "subscriptionPlans", "redeemCodes"]
 
 interface NavRow {
   id: string
@@ -792,11 +792,6 @@ export default function SystemManagement({ section = "general", initialTab }: { 
   const allVisibleRedeemCodesSelected = visibleRedeemCodes.length > 0 && visibleRedeemCodes.every((code) => selectedRedeemCodeIDs.includes(code.id))
 
   const handleSaveSettings = () => {
-    if (!isPremium && form.chat_page_mode === "advanced") {
-      updateField("chat_page_mode", "basic")
-      setIsPremiumNoticeOpen(true)
-      return
-    }
     if (!isPremium && form.message_channel_enabled) {
       updateField("message_channel_enabled", false)
       setIsPremiumNoticeOpen(true)
@@ -1247,26 +1242,6 @@ export default function SystemManagement({ section = "general", initialTab }: { 
               <ToggleField label={copy.sidebarModels} checked={form.sidebar_models_enabled} onChange={(checked) => updateField("sidebar_models_enabled", checked)} />
               <ToggleField label={copy.sidebarUsers} checked={form.sidebar_users_enabled} onChange={(checked) => updateField("sidebar_users_enabled", checked)} />
             </div>
-            <label className="block space-y-2 rounded-md border p-3 text-sm">
-              <span className="font-medium">{copy.chatPageMode}</span>
-              <select
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                value={form.chat_page_mode || "basic"}
-                onChange={(event) => {
-                  if (event.target.value === "advanced" && !isPremiumEdition) {
-                    setIsPremiumNoticeOpen(true)
-                    return
-                  }
-                  updateField("chat_page_mode", event.target.value)
-                }}
-              >
-                <option value="basic">{copy.chatPageModeBasic}</option>
-                <option value="advanced" disabled={!isPremiumEdition}>
-                  {copy.chatPageModeAdvanced}
-                </option>
-              </select>
-              <p className="text-xs leading-5 text-muted-foreground">{copy.chatPageModeHint}</p>
-            </label>
             <ToggleField
               label={copy.messageChannelEnabled}
               checked={form.message_channel_enabled}

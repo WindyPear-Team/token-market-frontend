@@ -74,9 +74,9 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
     },
   })
   const publicSettings = withPublicSettingsDefaults(settings)
-  const chatPath = chatPathForSettings(publicSettings)
-  const imagePath = imagePathForSettings(publicSettings)
-  const videoPath = videoPathForSettings(publicSettings)
+  const chatPath = chatPathForSettings()
+  const imagePath = imagePathForSettings()
+  const videoPath = videoPathForSettings()
   const visibleUserItems = userMenuItems
     .map((item) => {
       if (item.labelKey === "nav.chat") {

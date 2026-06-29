@@ -202,19 +202,19 @@ export function isPremiumEdition(settings?: Partial<Pick<PublicSettings, "editio
 
 export function isAdvancedChatEnabled(settings?: Partial<PublicSettings>) {
   const publicSettings = withPublicSettingsDefaults(settings)
-  return isPremiumEdition(publicSettings) && String(publicSettings.chat_page_mode).trim().toLowerCase() === "advanced"
+  return String(publicSettings.chat_page_mode).trim().toLowerCase() !== "basic"
 }
 
-export function chatPathForSettings(settings?: Partial<PublicSettings>) {
-  return isAdvancedChatEnabled(settings) ? "/chat" : "/dashboard/chat"
+export function chatPathForSettings() {
+  return "/chat"
 }
 
-export function imagePathForSettings(settings?: Partial<PublicSettings>) {
-  return isAdvancedChatEnabled(settings) ? "/chat/images" : "/dashboard/images"
+export function imagePathForSettings() {
+  return "/chat/images"
 }
 
-export function videoPathForSettings(settings?: Partial<PublicSettings>) {
-  return isAdvancedChatEnabled(settings) ? "/chat/videos" : "/dashboard/videos"
+export function videoPathForSettings() {
+  return "/chat/videos"
 }
 
 export interface TopNavItem {

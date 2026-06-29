@@ -23,7 +23,7 @@ import api from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import { pageKeyFromPathname } from "@/lib/page-layouts"
 import type { PublicSettings } from "@/lib/public-settings"
-import { parseTopNavItems, withPublicSettingsDefaults } from "@/lib/public-settings"
+import { isPremiumEdition, parseTopNavItems, withPublicSettingsDefaults } from "@/lib/public-settings"
 import { cn } from "@/lib/utils"
 
 interface CurrentUser {
@@ -53,6 +53,7 @@ export default function AdvancedChat() {
     },
   })
   const publicSettings = withPublicSettingsDefaults(settings)
+  const isPremium = isPremiumEdition(publicSettings)
   const topNavItems = parseTopNavItems(publicSettings.top_nav_items)
   const currentPageKey = pageKeyFromPathname(location.pathname)
   const isChatRoute = location.pathname === "/chat" || location.pathname.startsWith("/chat/session/")
@@ -146,12 +147,12 @@ export default function AdvancedChat() {
                     <Route path="skills" element={<Skills />} />
                     <Route path="mcp" element={<AdvancedChatMCP />} />
                     <Route path="devices" element={<AdvancedChatDevices />} />
-                    {publicSettings.message_channel_enabled && <Route path="channels/*" element={<MessageChannels />} />}
-                    <Route path="deliveries" element={<AdvancedChatDeliveries />} />
-                    <Route path="scheduled-tasks" element={<AdvancedChatScheduledTasks />} />
+                    {isPremium && publicSettings.message_channel_enabled && <Route path="channels/*" element={<MessageChannels />} />}
+                    {isPremium && <Route path="deliveries" element={<AdvancedChatDeliveries />} />}
+                    {isPremium && <Route path="scheduled-tasks" element={<AdvancedChatScheduledTasks />} />}
                     <Route path="images" element={<Images />} />
                     <Route path="videos" element={<Videos />} />
-                    <Route path="files" element={<AdvancedChatFiles />} />
+                    {isPremium && <Route path="files" element={<AdvancedChatFiles />} />}
                     <Route path="*" element={<Navigate to="/chat" replace />} />
                   </Routes>
                 )}
@@ -174,6 +175,7 @@ export default function AdvancedChat() {
 function AdvancedChatSidebar({ className, publicSettings, onNavigate }: { className?: string; publicSettings: PublicSettings; onNavigate?: () => void }) {
   const location = useLocation()
   const { language, t } = useI18n()
+  const isPremium = isPremiumEdition(publicSettings)
   const filesLabel = language === "zh" ? "文件库" : "Files"
   const messageChannelsLabel = language === "zh" ? "消息通道" : "Message Channels"
   const deliveriesLabel = language === "zh" ? "结果投递" : "Result Delivery"
@@ -182,10 +184,10 @@ function AdvancedChatSidebar({ className, publicSettings, onNavigate }: { classN
     { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" || location.pathname.startsWith("/chat/session/") },
     { href: "/chat/images", label: t("nav.images"), icon: Palette, active: location.pathname === "/chat/images" },
     { href: "/chat/videos", label: t("nav.videos"), icon: Video, active: location.pathname === "/chat/videos" },
-    { href: "/chat/files", label: filesLabel, icon: FileText, active: location.pathname === "/chat/files" },
-    ...(publicSettings.message_channel_enabled ? [{ href: "/chat/channels", label: messageChannelsLabel, icon: MessageSquare, active: location.pathname.startsWith("/chat/channels") }] : []),
-    { href: "/chat/deliveries", label: deliveriesLabel, icon: Send, active: location.pathname === "/chat/deliveries" },
-    { href: "/chat/scheduled-tasks", label: scheduledTasksLabel, icon: CalendarClock, active: location.pathname === "/chat/scheduled-tasks" },
+    ...(isPremium ? [{ href: "/chat/files", label: filesLabel, icon: FileText, active: location.pathname === "/chat/files" }] : []),
+    ...(isPremium && publicSettings.message_channel_enabled ? [{ href: "/chat/channels", label: messageChannelsLabel, icon: MessageSquare, active: location.pathname.startsWith("/chat/channels") }] : []),
+    ...(isPremium ? [{ href: "/chat/deliveries", label: deliveriesLabel, icon: Send, active: location.pathname === "/chat/deliveries" }] : []),
+    ...(isPremium ? [{ href: "/chat/scheduled-tasks", label: scheduledTasksLabel, icon: CalendarClock, active: location.pathname === "/chat/scheduled-tasks" }] : []),
     { href: "/chat/agents", label: t("nav.agents"), icon: Bot, active: location.pathname === "/chat/agents" },
     { href: "/chat/skills", label: t("nav.skills"), icon: Sparkles, active: location.pathname === "/chat/skills" },
     { href: "/chat/devices", label: t("nav.devices"), icon: Laptop, active: location.pathname === "/chat/devices" },

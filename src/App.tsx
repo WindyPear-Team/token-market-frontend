@@ -16,10 +16,7 @@ import ModelCatalog from "./pages/ModelCatalog"
 import Settings from "./pages/Settings"
 import Wallet from "./pages/Wallet"
 import APIKeys from "./pages/APIKeys"
-import Chat from "./pages/Chat"
 import AdvancedChat from "./pages/AdvancedChat"
-import Images from "./pages/Images"
-import Videos from "./pages/Videos"
 import SystemManagement from "./pages/SystemManagement"
 import AdminOverview from "./pages/AdminOverview"
 import AdminAuditLogs from "./pages/AdminAuditLogs"
@@ -28,12 +25,10 @@ import StatusPage from "./pages/StatusPage"
 import api from "./lib/api"
 import { I18nProvider, useI18n } from "./lib/i18n"
 import { ToastProvider } from "./components/ui/toast"
-import { Button } from "./components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./components/ui/dialog"
 import { ThemeProvider } from "./lib/theme"
 import type { TranslationKey } from "./lib/i18n"
 import type { PublicSettings } from "./lib/public-settings"
-import { isAdvancedChatEnabled, withPublicSettingsDefaults } from "./lib/public-settings"
+import { withPublicSettingsDefaults } from "./lib/public-settings"
 
 const queryClient = new QueryClient()
 
@@ -97,48 +92,6 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/dashboard" replace />
   }
   return <>{children}</>
-}
-
-const AdvancedChatRoute = () => {
-  const { t } = useI18n()
-  const [isBlockedOpen, setIsBlockedOpen] = useState(false)
-  const { data: settings, isLoading } = useQuery<PublicSettings>({
-    queryKey: ["public-settings"],
-    queryFn: async () => {
-      const res = await api.get("/public/settings")
-      return res.data
-    },
-  })
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-        {t("common.loading")}
-      </div>
-    )
-  }
-
-  if (!isAdvancedChatEnabled(settings)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Dialog open={isBlockedOpen || true} onOpenChange={() => setIsBlockedOpen(true)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("premium.requiredTitle")}</DialogTitle>
-            </DialogHeader>
-            <div className="text-sm text-muted-foreground">{t("premium.advancedChatRequired")}</div>
-            <DialogFooter>
-              <Button asChild>
-                <a href="/dashboard/chat">{t("premium.requiredAction")}</a>
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    )
-  }
-
-  return <AdvancedChat />
 }
 
 const SetupGate = ({ children }: { children: React.ReactNode }) => {
@@ -349,7 +302,7 @@ function App() {
                 path="/chat/*"
                 element={
                   <ProtectedRoute isAuthenticated={isAuthenticated}>
-                    <AdvancedChatRoute />
+                    <AdvancedChat />
                   </ProtectedRoute>
                 }
               />
@@ -476,9 +429,9 @@ function App() {
                 <Route path="logs" element={<Logs />} />
                 <Route path="wallet" element={<Wallet />} />
                 <Route path="api-keys" element={<APIKeys />} />
-                <Route path="chat" element={<Chat />} />
-                <Route path="images" element={<Images />} />
-                <Route path="videos" element={<Videos />} />
+                <Route path="chat" element={<Navigate to="/chat" replace />} />
+                <Route path="images" element={<Navigate to="/chat/images" replace />} />
+                <Route path="videos" element={<Navigate to="/chat/videos" replace />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
