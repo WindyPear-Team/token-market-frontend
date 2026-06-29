@@ -428,7 +428,10 @@ export default function MessageChannels() {
                     </div>
                   </Field>
                   <Field label={copy.qqMsgType}>
-                    <Input value={providerConfig.msg_type || ""} placeholder="0" onChange={(event) => updateProviderConfig("msg_type", event.target.value)} />
+                    <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={providerConfig.msg_type || "2"} onChange={(event) => updateProviderConfig("msg_type", event.target.value)}>
+                      <option value="0">{copy.qqMsgTypeText}</option>
+                      <option value="2">{copy.qqMsgTypeMarkdown}</option>
+                    </select>
                   </Field>
                 </>
               )}
@@ -871,6 +874,8 @@ const zhCopy = {
   qqIntentPublicGuildMessages: "公域频道消息事件",
   qqShard: "QQ 分片",
   qqMsgType: "QQ 消息类型",
+  qqMsgTypeText: "文本",
+  qqMsgTypeMarkdown: "Markdown",
   status: "状态",
   enabled: "启用",
   disabledState: "停用",
@@ -945,6 +950,8 @@ const enCopy: typeof zhCopy = {
   qqIntentPublicGuildMessages: "Public guild messages",
   qqShard: "QQ shard",
   qqMsgType: "QQ message type",
+  qqMsgTypeText: "Text",
+  qqMsgTypeMarkdown: "Markdown",
   status: "Status",
   enabled: "Enabled",
   disabledState: "Disabled",

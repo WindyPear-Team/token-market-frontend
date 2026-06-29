@@ -540,9 +540,10 @@ function ConnectionSettings({
                 <Input value={config.shard_total || ""} placeholder="1" onChange={(event) => updateConfig("shard_total", event.target.value)} />
               </div>
             </Field>
-            <Field label={copy.qqMsgType}>
-              <Input value={config.msg_type || ""} placeholder="0" onChange={(event) => updateConfig("msg_type", event.target.value)} />
-            </Field>
+            <SelectField label={copy.qqMsgType} value={config.msg_type || "2"} onChange={(value) => updateConfig("msg_type", value)}>
+              <option value="0">{copy.qqMsgTypeText}</option>
+              <option value="2">{copy.qqMsgTypeMarkdown}</option>
+            </SelectField>
           </div>
         )}
 
@@ -1231,6 +1232,8 @@ const zhCopy = {
   qqIntentPublicGuildMessages: "公域频道消息事件",
   qqShard: "QQ 分片",
   qqMsgType: "QQ 消息类型",
+  qqMsgTypeText: "文本",
+  qqMsgTypeMarkdown: "Markdown",
   oneBotBaseURL: "OneBot HTTP 地址",
   oneBotAccessToken: "OneBot Access Token",
   oneBotAction: "OneBot 发送 action",
@@ -1344,6 +1347,8 @@ const enCopy: CopyText = {
   qqIntentPublicGuildMessages: "Public guild messages",
   qqShard: "QQ shard",
   qqMsgType: "QQ message type",
+  qqMsgTypeText: "Text",
+  qqMsgTypeMarkdown: "Markdown",
   oneBotBaseURL: "OneBot HTTP URL",
   oneBotAccessToken: "OneBot access token",
   oneBotAction: "OneBot send action",
