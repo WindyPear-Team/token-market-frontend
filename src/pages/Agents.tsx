@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react"
+import { type ReactNode, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bot, MessageSquare, Plus, Save, Trash2 } from "lucide-react"
+import { Bot, MessageSquare, Plus, Save, Server, Sparkles, Trash2 } from "lucide-react"
 import { Link } from "react-router-dom"
 import api from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -22,11 +22,28 @@ interface ChatAgent {
   name: string
   prompt: string
   default_model: string
+  skill_ids: string[]
+  mcp_server_ids: string[]
   created_at: string
   updated_at: string
 }
 
+interface ChatSkill {
+  id: string
+  name: string
+  description: string
+}
+
+interface MCPServer {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
 const agentsQueryKey = ["advanced-chat-agents"] as const
+const skillsQueryKey = ["advanced-chat-skills"] as const
+const settingsQueryKey = ["advanced-chat-user-settings"] as const
 
 export default function Agents() {
   const queryClient = useQueryClient()
@@ -36,12 +53,16 @@ export default function Agents() {
   const [name, setName] = useState("")
   const [prompt, setPrompt] = useState("")
   const [defaultModel, setDefaultModel] = useState("")
+  const [skillIDs, setSkillIDs] = useState<string[]>([])
+  const [mcpServerIDs, setMCPServerIDs] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [createName, setCreateName] = useState("")
   const [createPrompt, setCreatePrompt] = useState("")
   const [createDefaultModel, setCreateDefaultModel] = useState("")
+  const [createSkillIDs, setCreateSkillIDs] = useState<string[]>([])
+  const [createMCPServerIDs, setCreateMCPServerIDs] = useState<string[]>([])
   const [isCreating, setIsCreating] = useState(false)
   const [deletingAgentID, setDeletingAgentID] = useState("")
 
@@ -63,13 +84,35 @@ export default function Agents() {
     },
   })
 
+  const { data: skills = [] } = useQuery<ChatSkill[]>({
+    queryKey: skillsQueryKey,
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/skills")
+      return Array.isArray(res.data)
+        ? res.data.map(normalizeSkill).filter((skill): skill is ChatSkill => Boolean(skill))
+        : []
+    },
+  })
+
+  const { data: mcpServers = [] } = useQuery<MCPServer[]>({
+    queryKey: settingsQueryKey,
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/settings")
+      return normalizeMCPServersFromSettings(res.data)
+    },
+  })
+
   const modelOptions = useMemo(() => uniqueModels(catalog), [catalog])
   const activeAgent = useMemo(() => agents.find((agent) => agent.id === activeAgentID), [activeAgentID, agents])
+  const skillName = useMemo(() => new Map(skills.map((skill) => [skill.id, skill.name])), [skills])
+  const mcpServerName = useMemo(() => new Map(mcpServers.map((server) => [server.id, server.name])), [mcpServers])
 
   const openCreateDialog = () => {
     setCreateName(t("chat.defaultAgentName"))
     setCreatePrompt("")
     setCreateDefaultModel("")
+    setCreateSkillIDs([])
+    setCreateMCPServerIDs([])
     setIsCreateOpen(true)
   }
 
@@ -78,6 +121,8 @@ export default function Agents() {
     setName(agent.name)
     setPrompt(agent.prompt)
     setDefaultModel(agent.default_model)
+    setSkillIDs(agent.skill_ids)
+    setMCPServerIDs(agent.mcp_server_ids)
   }
 
   const openEditDialog = (agent: ChatAgent) => {
@@ -90,6 +135,8 @@ export default function Agents() {
     setName("")
     setPrompt("")
     setDefaultModel("")
+    setSkillIDs([])
+    setMCPServerIDs([])
     setIsEditOpen(false)
   }
 
@@ -107,6 +154,8 @@ export default function Agents() {
         name: trimmedName,
         prompt: createPrompt.trim(),
         default_model: trimmedModel,
+        skill_ids: uniqueStrings(createSkillIDs),
+        mcp_server_ids: uniqueStrings(createMCPServerIDs),
       })
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
@@ -140,6 +189,8 @@ export default function Agents() {
         name: trimmedName,
         prompt: prompt.trim(),
         default_model: trimmedModel,
+        skill_ids: uniqueStrings(skillIDs),
+        mcp_server_ids: uniqueStrings(mcpServerIDs),
       })
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
@@ -207,6 +258,22 @@ export default function Agents() {
                     <span className="truncate text-sm font-medium">{agent.name}</span>
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model || t("chat.noDefaultModel")}</div>
+                  {(agent.skill_ids.length > 0 || agent.mcp_server_ids.length > 0) && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {agent.skill_ids.map((id) => (
+                        <span key={`skill-${id}`} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          <Sparkles size={11} />
+                          {skillName.get(id) || id}
+                        </span>
+                      ))}
+                      {agent.mcp_server_ids.map((id) => (
+                        <span key={`mcp-${id}`} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          <Server size={11} />
+                          {mcpServerName.get(id) || id}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </button>
                 <div className="flex items-center gap-1">
                   <Button asChild variant="ghost" size="sm" title={t("chat.chatWithAgent")}>
@@ -272,6 +339,24 @@ export default function Agents() {
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <CapabilityPicker
+                label={t("chat.skills")}
+                icon={<Sparkles size={14} />}
+                empty={t("chat.noSkills")}
+                selected={skillIDs}
+                items={skills.map((skill) => ({ id: skill.id, name: skill.name, description: skill.description }))}
+                onToggle={(id) => setSkillIDs((current) => toggleString(current, id))}
+              />
+              <CapabilityPicker
+                label={t("chat.mcpServers")}
+                icon={<Server size={14} />}
+                empty={t("chat.noMCPServers")}
+                selected={mcpServerIDs}
+                items={mcpServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
+                onToggle={(id) => setMCPServerIDs((current) => toggleString(current, id))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsEditOpen(false)}>
@@ -286,7 +371,7 @@ export default function Agents() {
       </Dialog>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("chat.newAgent")}</DialogTitle>
           </DialogHeader>
@@ -325,6 +410,24 @@ export default function Agents() {
                 onChange={(event) => setCreatePrompt(event.target.value)}
               />
             </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <CapabilityPicker
+                label={t("chat.skills")}
+                icon={<Sparkles size={14} />}
+                empty={t("chat.noSkills")}
+                selected={createSkillIDs}
+                items={skills.map((skill) => ({ id: skill.id, name: skill.name, description: skill.description }))}
+                onToggle={(id) => setCreateSkillIDs((current) => toggleString(current, id))}
+              />
+              <CapabilityPicker
+                label={t("chat.mcpServers")}
+                icon={<Server size={14} />}
+                empty={t("chat.noMCPServers")}
+                selected={createMCPServerIDs}
+                items={mcpServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
+                onToggle={(id) => setCreateMCPServerIDs((current) => toggleString(current, id))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsCreateOpen(false)}>
@@ -337,6 +440,60 @@ export default function Agents() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function CapabilityPicker({
+  label,
+  icon,
+  empty,
+  selected,
+  items,
+  onToggle,
+}: {
+  label: string
+  icon: ReactNode
+  empty: string
+  selected: string[]
+  items: Array<{ id: string; name: string; description?: string }>
+  onToggle: (id: string) => void
+}) {
+  return (
+    <div className="space-y-2 text-sm">
+      <span className="flex items-center gap-1 font-medium">
+        {icon}
+        {label}
+      </span>
+      {items.length === 0 ? (
+        <div className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">{empty}</div>
+      ) : (
+        <div className="grid max-h-56 gap-2 overflow-y-auto pr-1">
+          {items.map((item) => {
+            const checked = selected.includes(item.id)
+            return (
+              <label
+                key={item.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-2 rounded-md border p-2 transition-colors hover:bg-muted/50",
+                  checked && "border-primary bg-primary/5"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={checked}
+                  onChange={() => onToggle(item.id)}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium">{item.name}</span>
+                  {item.description && <span className="block truncate text-xs text-muted-foreground">{item.description}</span>}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -367,9 +524,62 @@ function normalizeAgent(value: unknown): ChatAgent | null {
     name: typeof value.name === "string" ? value.name : "",
     prompt: typeof value.prompt === "string" ? value.prompt : "",
     default_model: typeof value.default_model === "string" ? value.default_model : "",
+    skill_ids: stringArray(value.skill_ids),
+    mcp_server_ids: stringArray(value.mcp_server_ids),
     created_at: typeof value.created_at === "string" ? value.created_at : new Date().toISOString(),
     updated_at: typeof value.updated_at === "string" ? value.updated_at : new Date().toISOString(),
   }
+}
+
+function normalizeSkill(value: unknown): ChatSkill | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const id = stringFromUnknown(value.id)
+  return id ? { id, name: typeof value.name === "string" ? value.name : id, description: typeof value.description === "string" ? value.description : "" } : null
+}
+
+function normalizeMCPServersFromSettings(value: unknown): MCPServer[] {
+  if (!isRecord(value)) {
+    return []
+  }
+  const builtin = Array.isArray(value.builtin_mcp_servers) ? value.builtin_mcp_servers.map(normalizeMCPServer) : []
+  const custom = Array.isArray(value.custom_mcp_servers) ? value.custom_mcp_servers.map(normalizeMCPServer) : []
+  const merged = Array.isArray(value.mcp_servers) ? value.mcp_servers.map(normalizeMCPServer) : mergeMCPServers(builtin, custom)
+  return merged.filter((server) => server.id && server.enabled)
+}
+
+function normalizeMCPServer(value: unknown): MCPServer {
+  const item = isRecord(value) ? value : {}
+  const id = stringFromUnknown(item.id) || ""
+  return {
+    id,
+    name: typeof item.name === "string" && item.name ? item.name : id,
+    url: typeof item.url === "string" ? item.url : "",
+    enabled: item.enabled !== false,
+  }
+}
+
+function toggleString(values: string[], value: string) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? uniqueStrings(value.map((item) => stringFromUnknown(item) || "")) : []
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function mergeMCPServers(...groups: MCPServer[][]) {
+  const merged = new Map<string, MCPServer>()
+  for (const server of groups.flat()) {
+    if (server.id && !merged.has(server.id)) {
+      merged.set(server.id, server)
+    }
+  }
+  return Array.from(merged.values())
 }
 
 function apiErrorMessage(err: unknown, fallback: string) {

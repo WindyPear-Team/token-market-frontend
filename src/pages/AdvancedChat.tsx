@@ -192,7 +192,7 @@ function AdvancedChatSidebar({ className, publicSettings, onNavigate }: { classN
   const messageChannelsLabel = language === "zh" ? "消息通道" : "Message Channels"
   const deliveriesLabel = language === "zh" ? "结果投递" : "Result Delivery"
   const scheduledTasksLabel = language === "zh" ? "计划任务" : "Scheduled Tasks"
-  const agentGroupsLabel = language === "zh" ? "代理组" : "Agent Groups"
+  const agentGroupsLabel = language === "zh" ? "工作室" : "Agent Studios"
   const agentTasksLabel = language === "zh" ? "\u4ee3\u7406\u4efb\u52a1" : "Agent Tasks"
   const items = [
     { href: "/chat", label: t("nav.chat"), icon: MessageSquare, active: location.pathname === "/chat" || location.pathname.startsWith("/chat/session/") },

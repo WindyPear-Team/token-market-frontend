@@ -22,6 +22,11 @@ interface IDName {
   name: string
 }
 
+interface StudioOption {
+  id: string
+  name: string
+}
+
 interface Device {
   id: string
   name: string
@@ -40,6 +45,7 @@ interface GroupConfig {
   user_channel_id?: number | null
   model: string
   agent_id?: number | null
+  agent_group_id: string
   skill_ids: number[]
   context_message_count: number
   reply_mode: string
@@ -79,6 +85,7 @@ interface MessageChannel {
   default_user_channel_id?: number | null
   default_model: string
   default_agent_id?: number | null
+  default_agent_group_id: string
   default_skill_ids: number[]
   default_context_message_count: number
   reply_mode: string
@@ -115,6 +122,7 @@ interface Draft {
   default_user_channel_id: string
   default_model: string
   default_agent_id: string
+  default_agent_group_id: string
   default_skill_ids: number[]
   default_context_message_count: string
   reply_mode: string
@@ -161,6 +169,7 @@ const emptyDraft: Draft = {
   default_user_channel_id: "",
   default_model: "",
   default_agent_id: "",
+  default_agent_group_id: "",
   default_skill_ids: [],
   default_context_message_count: "12",
   reply_mode: "mention",
@@ -634,6 +643,10 @@ function RoutingTab({
             <option value="">{copy.inheritNone}</option>
             {lookups.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
           </SelectField>
+          <SelectField label={copy.studio} value={draft.default_agent_group_id} onChange={(value) => onDraftChange({ default_agent_group_id: value })}>
+            <option value="">{copy.noStudio}</option>
+            {lookups.studios.map((studio) => <option key={studio.id} value={studio.id}>{studio.name}</option>)}
+          </SelectField>
           <SelectField label={copy.replyMode} value={draft.reply_mode} onChange={(value) => onDraftChange({ reply_mode: value })}>
             <option value="mention">{copy.modeMention}</option>
             <option value="always">{copy.modeAlways}</option>
@@ -676,6 +689,7 @@ function GroupsTab({ copy, draft, lookups, modelOptions, onDraftChange }: { copy
         user_channel_id: null,
         model: "",
         agent_id: null,
+        agent_group_id: "",
         skill_ids: [],
         context_message_count: Number(draft.default_context_message_count) || 12,
         reply_mode: "",
@@ -737,6 +751,10 @@ function GroupsTab({ copy, draft, lookups, modelOptions, onDraftChange }: { copy
                   <SelectField label={copy.agent} value={group.agent_id ? String(group.agent_id) : ""} onChange={(value) => updateGroup(index, { agent_id: value ? Number(value) : null })}>
                     <option value="">{copy.inheritDefault}</option>
                     {lookups.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                  </SelectField>
+                  <SelectField label={copy.studio} value={group.agent_group_id || ""} onChange={(value) => updateGroup(index, { agent_group_id: value })}>
+                    <option value="">{copy.inheritDefault}</option>
+                    {lookups.studios.map((studio) => <option key={studio.id} value={studio.id}>{studio.name}</option>)}
                   </SelectField>
                   <Field label={copy.contextCount}><Input type="number" min={0} max={100} value={group.context_message_count} onChange={(event) => updateGroup(index, { context_message_count: Number(event.target.value) || 0 })} /></Field>
                   <label className="flex h-10 items-center gap-2 self-end rounded-md border px-3 text-sm">
@@ -896,6 +914,7 @@ function Badge({ children, muted }: { children: ReactNode; muted?: boolean }) {
 interface LookupData {
   catalog: UserChannelCatalog[]
   agents: IDName[]
+  studios: StudioOption[]
   skills: IDName[]
   devices: Device[]
 }
@@ -925,6 +944,15 @@ function useLookups(): LookupData {
       return Array.isArray(res.data) ? res.data.map(normalizeIDName).filter(Boolean) as IDName[] : []
     },
   })
+  const { data: studios = [] } = useQuery<StudioOption[]>({
+    queryKey: ["advanced-chat-agent-groups"],
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/agent-groups")
+      const data = isRecord(res.data) ? res.data : {}
+      const groups = Array.isArray(data.groups) ? data.groups : []
+      return groups.map(normalizeStudioOption).filter((item): item is StudioOption => Boolean(item))
+    },
+  })
   const { data: skills = [] } = useQuery<IDName[]>({
     queryKey: ["advanced-chat-skills"],
     queryFn: async () => {
@@ -939,7 +967,7 @@ function useLookups(): LookupData {
       return Array.isArray(res.data) ? res.data.map(normalizeDevice).filter(Boolean) as Device[] : []
     },
   })
-  return { catalog, agents, skills, devices }
+  return { catalog, agents, studios, skills, devices }
 }
 
 function draftToPayload(draft: Draft) {
@@ -956,6 +984,7 @@ function draftToPayload(draft: Draft) {
     default_user_channel_id: draft.default_user_channel_id ? Number(draft.default_user_channel_id) : null,
     default_model: draft.default_model,
     default_agent_id: draft.default_agent_id ? Number(draft.default_agent_id) : null,
+    default_agent_group_id: draft.default_agent_group_id,
     default_skill_ids: draft.default_skill_ids,
     default_context_message_count: Number(draft.default_context_message_count) || 0,
     reply_mode: draft.reply_mode,
@@ -1012,6 +1041,7 @@ function channelToDraft(channel: MessageChannel): Draft {
     default_user_channel_id: channel.default_user_channel_id ? String(channel.default_user_channel_id) : "",
     default_model: channel.default_model || "",
     default_agent_id: channel.default_agent_id ? String(channel.default_agent_id) : "",
+    default_agent_group_id: channel.default_agent_group_id || "",
     default_skill_ids: channel.default_skill_ids || [],
     default_context_message_count: String(channel.default_context_message_count || 12),
     reply_mode: channel.reply_mode || "mention",
@@ -1040,6 +1070,7 @@ function normalizeChannel(value: unknown): MessageChannel | null {
     default_user_channel_id: nullableNumber(value.default_user_channel_id),
     default_model: stringValue(value.default_model),
     default_agent_id: nullableNumber(value.default_agent_id),
+    default_agent_group_id: stringValue(value.default_agent_group_id),
     default_skill_ids: numberArray(value.default_skill_ids),
     default_context_message_count: Number(value.default_context_message_count || 12),
     reply_mode: stringValue(value.reply_mode) || "mention",
@@ -1104,6 +1135,7 @@ function normalizeGroup(value: unknown): GroupConfig | null {
     user_channel_id: nullableNumber(value.user_channel_id),
     model: stringValue(value.model),
     agent_id: nullableNumber(value.agent_id),
+    agent_group_id: stringValue(value.agent_group_id),
     skill_ids: numberArray(value.skill_ids),
     context_message_count: Number(value.context_message_count || 0),
     reply_mode: stringValue(value.reply_mode),
@@ -1124,6 +1156,13 @@ function normalizeCatalogItem(value: unknown): UserChannelCatalog {
 function normalizeIDName(value: unknown): IDName | null {
   if (!isRecord(value) || !Number(value.id)) return null
   return { id: Number(value.id), name: stringValue(value.name) }
+}
+
+function normalizeStudioOption(value: unknown): StudioOption | null {
+  if (!isRecord(value)) return null
+  const id = stringValue(value.id)
+  if (!id) return null
+  return { id, name: stringValue(value.name) || id }
 }
 
 function normalizeDevice(value: unknown): Device | null {
@@ -1244,7 +1283,9 @@ const zhCopy = {
   commandPrefixes: "自动批准命令前缀",
   userChannel: "用户渠道",
   model: "模型",
-  agent: "智能体",
+  agent: "代理",
+  studio: "工作室",
+  noStudio: "不使用工作室",
   skills: "Skills",
   contextCount: "上下文消息数量",
   replyMode: "回复模式",
@@ -1365,6 +1406,8 @@ const enCopy: CopyText = {
   userChannel: "User channel",
   model: "Model",
   agent: "Agent",
+  studio: "Studio",
+  noStudio: "No studio",
   skills: "Skills",
   contextCount: "Context messages",
   replyMode: "Reply mode",

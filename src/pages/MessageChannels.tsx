@@ -846,7 +846,7 @@ function apiErrorMessage(err: unknown, fallback: string) {
 
 const zhCopy = {
   title: "消息通道",
-  subtitle: "把 Telegram 或 Discord 机器人接入 AI 平台，并按群配置模型、用户渠道、智能体、skill、设备环境和上下文数量。",
+  subtitle: "把 Telegram 或 Discord 机器人接入 AI 平台，并按群配置模型、用户渠道、代理、skill、设备环境和上下文数量。",
   disabled: "管理员尚未启用消息通道。",
   channelList: "通道列表",
   empty: "暂无消息通道。",
@@ -886,7 +886,7 @@ const zhCopy = {
   device: "设备开发环境",
   userChannel: "用户渠道",
   model: "模型",
-  agent: "智能体",
+  agent: "代理",
   skills: "Skills",
   contextCount: "上下文消息数量",
   replyMode: "回复模式",

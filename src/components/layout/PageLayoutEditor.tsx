@@ -435,7 +435,7 @@ const zhCopy: LayoutEditorCopy = {
   moveDown: "下移",
   moveUp: "上移",
   pageAdminOverview: "管理员概览",
-  pageAgents: "智能体",
+  pageAgents: "代理",
   pageApiKeys: "API 密钥",
   pageChannels: "渠道",
   pageChat: "聊天",

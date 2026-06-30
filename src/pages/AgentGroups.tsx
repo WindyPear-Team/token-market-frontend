@@ -29,8 +29,12 @@ interface AgentGroupAgent {
   id: string
   name: string
   type: "chief" | "worker" | "critic" | "reviewer"
-  prompt: string
-  default_model?: string
+  chat_agent_id?: string
+}
+
+interface ChatAgent {
+  id: string
+  name: string
 }
 
 interface DraftGroup {
@@ -41,9 +45,10 @@ interface DraftGroup {
 }
 
 const devicesQueryKey = ["advanced-chat-connector-devices"] as const
+const chatAgentsQueryKey = ["advanced-chat-agents"] as const
 const agentGroupsQueryKey = (deviceID: string) => ["advanced-chat-agent-groups", deviceID] as const
-const emptyAgent = (): AgentGroupAgent => ({ id: "", name: "", type: "worker", prompt: "", default_model: "" })
-const emptyDraft = (): DraftGroup => ({ id: "", name: "", description: "", agents: [{ id: "chief", name: "Chief", type: "chief", prompt: "" }] })
+const emptyAgent = (): AgentGroupAgent => ({ id: "", name: "", type: "worker", chat_agent_id: "" })
+const emptyDraft = (): DraftGroup => ({ id: "", name: "", description: "", agents: [{ id: "chief", name: "Chief", type: "chief", chat_agent_id: "" }] })
 
 export default function AgentGroups() {
   const { language } = useI18n()
@@ -67,6 +72,15 @@ export default function AgentGroups() {
     },
   })
 
+  const { data: chatAgents = [] } = useQuery<ChatAgent[]>({
+    queryKey: chatAgentsQueryKey,
+    queryFn: async () => {
+      const res = await api.get("/user/advanced-chat/agents")
+      const rawAgents: unknown[] = Array.isArray(res.data) ? res.data : []
+      return rawAgents.map(normalizeChatAgent).filter((item): item is ChatAgent => Boolean(item))
+    },
+  })
+
   useEffect(() => {
     if (selectedDeviceID && devices.some((device) => device.id === selectedDeviceID)) {
       return
@@ -79,7 +93,7 @@ export default function AgentGroups() {
     queryKey: agentGroupsQueryKey(selectedDeviceID),
     enabled: Boolean(selectedDeviceID),
     queryFn: async () => {
-      const res = await api.get("/user/advanced-chat/agent-groups", { params: { connector_device_id: selectedDeviceID } })
+      const res = await api.get("/user/advanced-chat/agent-groups")
       const data = isRecord(res.data) ? res.data : {}
       const rawGroups: unknown[] = Array.isArray(data.groups) ? data.groups : []
       return rawGroups.map(normalizeGroup).filter((item): item is AgentGroup => Boolean(item))
@@ -116,6 +130,15 @@ export default function AgentGroups() {
     }))
   }
 
+  const selectChatAgent = (index: number, chatAgentID: string) => {
+    const chatAgent = chatAgents.find((agent) => agent.id === chatAgentID)
+    updateAgent(index, {
+      chat_agent_id: chatAgentID,
+      id: agentMemberID(chatAgent),
+      name: chatAgent?.name || draft.agents[index]?.name || "",
+    })
+  }
+
   const removeAgent = (index: number) => {
     setDraft((current) => ({ ...current, agents: current.agents.filter((_, itemIndex) => itemIndex !== index) }))
   }
@@ -126,23 +149,21 @@ export default function AgentGroups() {
       return
     }
     const payload = {
-      connector_device_id: selectedDeviceID,
       id: draft.id.trim(),
       name: draft.name.trim(),
       description: draft.description.trim(),
       agents: draft.agents.map((agent) => ({
-        id: agent.id.trim(),
-        name: agent.name.trim(),
+        id: agent.id.trim() || agentMemberID(chatAgents.find((item) => item.id === agent.chat_agent_id)),
+        name: agent.name.trim() || chatAgents.find((item) => item.id === agent.chat_agent_id)?.name || "",
         type: agent.type,
-        prompt: agent.prompt.trim(),
-        default_model: (agent.default_model || "").trim(),
+        chat_agent_id: (agent.chat_agent_id || "").trim(),
       })),
     }
     if (!payload.name) {
       error(copy.nameRequired)
       return
     }
-    if (!payload.agents.some((agent) => agent.prompt)) {
+    if (payload.agents.length === 0 || payload.agents.some((agent) => !agent.chat_agent_id)) {
       error(copy.agentRequired)
       return
     }
@@ -170,7 +191,7 @@ export default function AgentGroups() {
     }
     setDeletingID(group.id)
     try {
-      await api.delete(`/user/advanced-chat/agent-groups/${encodeURIComponent(group.id)}`, { params: { connector_device_id: selectedDeviceID } })
+      await api.delete(`/user/advanced-chat/agent-groups/${encodeURIComponent(group.id)}`)
       await queryClient.invalidateQueries({ queryKey: agentGroupsQueryKey(selectedDeviceID) })
       success(copy.deleted)
     } catch (err) {
@@ -276,10 +297,7 @@ export default function AgentGroups() {
               </div>
               {draft.agents.map((agent, index) => (
                 <div key={index} className="rounded-md border p-3">
-                  <div className="grid gap-3 md:grid-cols-[1fr_1fr_140px_1fr_auto]">
-                    <Field label={copy.agentID}>
-                      <Input value={agent.id} placeholder="worker-1" onChange={(event) => updateAgent(index, { id: event.target.value })} />
-                    </Field>
+                  <div className="grid gap-3 md:grid-cols-[1fr_140px_1fr_auto]">
                     <Field label={copy.agentName}>
                       <Input value={agent.name} onChange={(event) => updateAgent(index, { name: event.target.value })} />
                     </Field>
@@ -291,8 +309,15 @@ export default function AgentGroups() {
                         <option value="reviewer">reviewer</option>
                       </select>
                     </Field>
-                    <Field label={copy.defaultModel}>
-                      <Input value={agent.default_model || ""} onChange={(event) => updateAgent(index, { default_model: event.target.value })} />
+                    <Field label={copy.boundAgent}>
+                      <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={agent.chat_agent_id || ""} onChange={(event) => selectChatAgent(index, event.target.value)}>
+                        <option value="">{chatAgents.length ? copy.selectAgent : copy.noAgents}</option>
+                        {chatAgents.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
                     </Field>
                     <div className="flex items-end">
                       <Button variant="ghost" size="icon" disabled={draft.agents.length <= 1} onClick={() => removeAgent(index)} title={copy.removeAgent}>
@@ -300,9 +325,6 @@ export default function AgentGroups() {
                       </Button>
                     </div>
                   </div>
-                  <Field label={copy.prompt}>
-                    <textarea className="mt-1 min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={agent.prompt} onChange={(event) => updateAgent(index, { prompt: event.target.value })} />
-                  </Field>
                 </div>
               ))}
             </div>
@@ -335,6 +357,12 @@ function normalizeDevice(value: unknown): ConnectorDevice | null {
   return id ? { id, name: stringValue(value.name) || id, online: value.online === true, os: stringValue(value.os) } : null
 }
 
+function normalizeChatAgent(value: unknown): ChatAgent | null {
+  if (!isRecord(value)) return null
+  const id = stringValue(value.id)
+  return id ? { id, name: stringValue(value.name) || id } : null
+}
+
 function normalizeGroup(value: unknown): AgentGroup | null {
   if (!isRecord(value)) return null
   const id = stringValue(value.id)
@@ -352,9 +380,14 @@ function normalizeAgent(value: unknown): AgentGroupAgent | null {
     id,
     name: stringValue(value.name) || id,
     type: type === "chief" || type === "critic" || type === "reviewer" ? type : "worker",
-    prompt: stringValue(value.prompt),
-    default_model: stringValue(value.default_model),
+    chat_agent_id: stringValue(value.chat_agent_id),
   }
+}
+
+function agentMemberID(agent?: ChatAgent) {
+  const source = agent?.name || agent?.id || "agent"
+  const normalized = source.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "")
+  return normalized || `agent-${agent?.id || "1"}`
 }
 
 function apiErrorMessage(err: unknown, fallback: string) {
@@ -374,34 +407,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
-const zhCopy = {
-  title: "代理组",
-  subtitle: "代理组存储在连接器设备的 token-market/.agent-groups 目录中。进入页面后会从所选连接器自动拉取。",
+/*
+const legacyZhCopy = {
+  title: "工作室",
+  subtitle: "工作室存储在数据库中，连接器只用于运行时工作目录和工具执行。",
   selectDevice: "选择连接器",
   offline: "离线",
   refresh: "刷新",
-  newGroup: "新建代理组",
-  editGroup: "编辑代理组",
+  newGroup: "新建工作室",
+  editGroup: "编辑工作室",
   noDevice: "未选择连接器",
   deviceRequired: "请先选择一个在线连接器",
-  loading: "正在加载代理组...",
-  empty: "该连接器暂无代理组",
-  deleteGroup: "删除代理组",
-  deleteConfirm: "确定删除代理组 {name} 吗？",
-  deleted: "代理组已删除",
-  deleteFailed: "删除代理组失败",
-  saved: "代理组已保存",
-  saveFailed: "保存代理组失败",
-  nameRequired: "请输入代理组名称",
-  agentRequired: "至少需要一个带提示词的 agent",
-  groupID: "代理组 ID",
+  loading: "正在加载工作室...",
+  empty: "该连接器暂无工作室",
+  deleteGroup: "删除工作室",
+  deleteConfirm: "确定删除工作室 {name} 吗？",
+  deleted: "工作室已删除",
+  deleteFailed: "删除工作室失败",
+  saved: "工作室已保存",
+  saveFailed: "保存工作室失败",
+  nameRequired: "请输入工作室名称",
+  agentRequired: "每个工作室成员都必须选择一个代理",
+  groupID: "工作室 ID",
   groupIDPlaceholder: "留空自动生成",
-  groupName: "代理组名称",
+  groupName: "工作室名称",
   connector: "连接器",
   description: "描述",
   agents: "Agents",
   addAgent: "添加 agent",
-  agentID: "Agent ID",
   agentName: "名称",
   agentType: "类型",
   defaultModel: "默认模型",
@@ -412,39 +445,80 @@ const zhCopy = {
   saving: "保存中...",
 }
 
+void legacyZhCopy
+*/
+
+const zhCopy = {
+  title: "\u5de5\u4f5c\u5ba4",
+  subtitle: "\u5de5\u4f5c\u5ba4\u5b58\u50a8\u5728\u6570\u636e\u5e93\u4e2d\uff0c\u8fde\u63a5\u5668\u53ea\u7528\u4e8e\u8fd0\u884c\u65f6\u5de5\u4f5c\u76ee\u5f55\u548c\u5de5\u5177\u6267\u884c\u3002",
+  selectDevice: "\u9009\u62e9\u8fde\u63a5\u5668",
+  offline: "\u79bb\u7ebf",
+  refresh: "\u5237\u65b0",
+  newGroup: "\u65b0\u5efa\u5de5\u4f5c\u5ba4",
+  editGroup: "\u7f16\u8f91\u5de5\u4f5c\u5ba4",
+  noDevice: "\u672a\u9009\u62e9\u8fde\u63a5\u5668",
+  deviceRequired: "\u8bf7\u5148\u9009\u62e9\u4e00\u4e2a\u5728\u7ebf\u8fde\u63a5\u5668",
+  loading: "\u6b63\u5728\u52a0\u8f7d\u5de5\u4f5c\u5ba4...",
+  empty: "\u8be5\u8fde\u63a5\u5668\u6682\u65e0\u5de5\u4f5c\u5ba4",
+  deleteGroup: "\u5220\u9664\u5de5\u4f5c\u5ba4",
+  deleteConfirm: "\u786e\u5b9a\u5220\u9664\u5de5\u4f5c\u5ba4 {name} \u5417\uff1f",
+  deleted: "\u5de5\u4f5c\u5ba4\u5df2\u5220\u9664",
+  deleteFailed: "\u5220\u9664\u5de5\u4f5c\u5ba4\u5931\u8d25",
+  saved: "\u5de5\u4f5c\u5ba4\u5df2\u4fdd\u5b58",
+  saveFailed: "\u4fdd\u5b58\u5de5\u4f5c\u5ba4\u5931\u8d25",
+  nameRequired: "\u8bf7\u8f93\u5165\u5de5\u4f5c\u5ba4\u540d\u79f0",
+  agentRequired: "\u6bcf\u4e2a\u5de5\u4f5c\u5ba4\u6210\u5458\u90fd\u5fc5\u987b\u9009\u62e9\u4e00\u4e2a\u4ee3\u7406",
+  groupID: "\u5de5\u4f5c\u5ba4 ID",
+  groupIDPlaceholder: "\u7559\u7a7a\u81ea\u52a8\u751f\u6210",
+  groupName: "\u5de5\u4f5c\u5ba4\u540d\u79f0",
+  connector: "\u8fde\u63a5\u5668",
+  description: "\u63cf\u8ff0",
+  agents: "\u6210\u5458",
+  addAgent: "\u6dfb\u52a0\u6210\u5458",
+  agentName: "\u540d\u79f0",
+  agentType: "\u7c7b\u578b",
+  boundAgent: "\u4ee3\u7406",
+  noAgents: "\u6682\u65e0\u4ee3\u7406",
+  selectAgent: "\u9009\u62e9\u4ee3\u7406",
+  removeAgent: "\u79fb\u9664\u6210\u5458",
+  cancel: "\u53d6\u6d88",
+  save: "\u4fdd\u5b58",
+  saving: "\u4fdd\u5b58\u4e2d...",
+}
+
 const enCopy = {
-  title: "Agent Groups",
-  subtitle: "Agent groups are stored on the connector device under token-market/.agent-groups. This page loads them from the selected connector.",
+  title: "Agent Studios",
+  subtitle: "Studios are stored in the database. Connectors are only used at runtime for workspace paths and tool execution.",
   selectDevice: "Select connector",
   offline: "offline",
   refresh: "Refresh",
-  newGroup: "New group",
-  editGroup: "Edit group",
+  newGroup: "New studio",
+  editGroup: "Edit studio",
   noDevice: "No connector selected",
   deviceRequired: "Select an online connector first",
   loading: "Loading agent groups...",
-  empty: "No agent groups on this connector",
-  deleteGroup: "Delete group",
-  deleteConfirm: "Delete agent group {name}?",
-  deleted: "Agent group deleted",
-  deleteFailed: "Failed to delete agent group",
-  saved: "Agent group saved",
-  saveFailed: "Failed to save agent group",
-  nameRequired: "Agent group name is required",
-  agentRequired: "At least one agent needs a prompt",
+  empty: "No studios on this connector",
+  deleteGroup: "Delete studio",
+  deleteConfirm: "Delete studio {name}?",
+  deleted: "Studio deleted",
+  deleteFailed: "Failed to delete studio",
+  saved: "Studio saved",
+  saveFailed: "Failed to save studio",
+  nameRequired: "Studio name is required",
+  agentRequired: "Each studio member must select an agent",
   groupID: "Group ID",
   groupIDPlaceholder: "Leave empty to generate",
-  groupName: "Group name",
+  groupName: "Studio name",
   connector: "Connector",
   description: "Description",
   agents: "Agents",
   addAgent: "Add agent",
-  agentID: "Agent ID",
   agentName: "Name",
   agentType: "Type",
-  defaultModel: "Default model",
+  boundAgent: "Agent",
+  noAgents: "No agents",
+  selectAgent: "Select agent",
   removeAgent: "Remove agent",
-  prompt: "Prompt",
   cancel: "Cancel",
   save: "Save",
   saving: "Saving...",
