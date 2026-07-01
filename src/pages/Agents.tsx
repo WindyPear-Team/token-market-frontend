@@ -41,9 +41,10 @@ interface MCPServer {
   enabled: boolean
 }
 
-const agentsQueryKey = ["advanced-chat-agents"] as const
+const agentsQueryKey = ["advanced-chat-agents", "full"] as const
+const sharedAgentsQueryKey = ["advanced-chat-agents"] as const
 const skillsQueryKey = ["advanced-chat-skills"] as const
-const settingsQueryKey = ["advanced-chat-user-settings"] as const
+const agentMCPServersQueryKey = ["advanced-chat-agent-mcp-servers"] as const
 
 export default function Agents() {
   const queryClient = useQueryClient()
@@ -95,7 +96,7 @@ export default function Agents() {
   })
 
   const { data: mcpServers = [] } = useQuery<MCPServer[]>({
-    queryKey: settingsQueryKey,
+    queryKey: agentMCPServersQueryKey,
     queryFn: async () => {
       const res = await api.get("/user/advanced-chat/settings")
       return normalizeMCPServersFromSettings(res.data)
@@ -105,7 +106,8 @@ export default function Agents() {
   const modelOptions = useMemo(() => uniqueModels(catalog), [catalog])
   const activeAgent = useMemo(() => agents.find((agent) => agent.id === activeAgentID), [activeAgentID, agents])
   const skillName = useMemo(() => new Map(skills.map((skill) => [skill.id, skill.name])), [skills])
-  const mcpServerName = useMemo(() => new Map(mcpServers.map((server) => [server.id, server.name])), [mcpServers])
+  const normalizedMCPServers = Array.isArray(mcpServers) ? mcpServers : []
+  const mcpServerName = useMemo(() => new Map(normalizedMCPServers.map((server) => [server.id, server.name])), [normalizedMCPServers])
 
   const openCreateDialog = () => {
     setCreateName(t("chat.defaultAgentName"))
@@ -121,8 +123,8 @@ export default function Agents() {
     setName(agent.name)
     setPrompt(agent.prompt)
     setDefaultModel(agent.default_model)
-    setSkillIDs(agent.skill_ids)
-    setMCPServerIDs(agent.mcp_server_ids)
+    setSkillIDs(Array.isArray(agent.skill_ids) ? agent.skill_ids : [])
+    setMCPServerIDs(Array.isArray(agent.mcp_server_ids) ? agent.mcp_server_ids : [])
   }
 
   const openEditDialog = (agent: ChatAgent) => {
@@ -159,6 +161,7 @@ export default function Agents() {
       })
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: sharedAgentsQueryKey })
       if (savedAgent) {
         setEditForm(savedAgent)
       }
@@ -194,6 +197,7 @@ export default function Agents() {
       })
       const savedAgent = normalizeAgent(res.data)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: sharedAgentsQueryKey })
       if (savedAgent) {
         setEditForm(savedAgent)
       }
@@ -211,6 +215,7 @@ export default function Agents() {
     try {
       await api.delete(`/user/advanced-chat/agents/${encodeURIComponent(agent.id)}`)
       await queryClient.invalidateQueries({ queryKey: agentsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: sharedAgentsQueryKey })
       if (activeAgentID === agent.id) {
         clearEdit()
       }
@@ -258,15 +263,15 @@ export default function Agents() {
                     <span className="truncate text-sm font-medium">{agent.name}</span>
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">{agent.default_model || t("chat.noDefaultModel")}</div>
-                  {(agent.skill_ids.length > 0 || agent.mcp_server_ids.length > 0) && (
+                  {((Array.isArray(agent.skill_ids) && agent.skill_ids.length > 0) || (Array.isArray(agent.mcp_server_ids) && agent.mcp_server_ids.length > 0)) && (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {agent.skill_ids.map((id) => (
+                      {(Array.isArray(agent.skill_ids) ? agent.skill_ids : []).map((id) => (
                         <span key={`skill-${id}`} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                           <Sparkles size={11} />
                           {skillName.get(id) || id}
                         </span>
                       ))}
-                      {agent.mcp_server_ids.map((id) => (
+                      {(Array.isArray(agent.mcp_server_ids) ? agent.mcp_server_ids : []).map((id) => (
                         <span key={`mcp-${id}`} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                           <Server size={11} />
                           {mcpServerName.get(id) || id}
@@ -353,7 +358,7 @@ export default function Agents() {
                 icon={<Server size={14} />}
                 empty={t("chat.noMCPServers")}
                 selected={mcpServerIDs}
-                items={mcpServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
+                items={normalizedMCPServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
                 onToggle={(id) => setMCPServerIDs((current) => toggleString(current, id))}
               />
             </div>
@@ -424,7 +429,7 @@ export default function Agents() {
                 icon={<Server size={14} />}
                 empty={t("chat.noMCPServers")}
                 selected={createMCPServerIDs}
-                items={mcpServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
+                items={normalizedMCPServers.map((server) => ({ id: server.id, name: server.name, description: server.url }))}
                 onToggle={(id) => setCreateMCPServerIDs((current) => toggleString(current, id))}
               />
             </div>
